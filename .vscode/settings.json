@@ -9,5 +9,6 @@
     "--config-file",
     "pyproject.toml",
     "--show-error-codes"
-  ]
+  ],
+  "cursorpyright.analysis.typeCheckingMode": "off"
 }
