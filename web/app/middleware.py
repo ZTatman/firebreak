@@ -8,7 +8,7 @@ class SetupRequiredMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path
-        if path.startswith("/setup") or path.startswith("/static") or path == "/favicon.ico":
+        if path.startswith(("/setup", "/static")) or path == "/favicon.ico":
             return await call_next(request)
 
         if request.app.state.app_settings is None:

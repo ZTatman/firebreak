@@ -117,7 +117,7 @@ async def revoke_session(
     if not firebreak_session:
         return
     token_hash = hashlib.sha256(firebreak_session.encode()).hexdigest()
-    result = await db.execute(
+    await db.execute(
         update(Session)
         .where(Session.token_hash == token_hash, Session.revoked_at.is_(None))
         .values(revoked_at=datetime.now(UTC))

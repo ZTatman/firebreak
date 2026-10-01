@@ -23,7 +23,9 @@ class Grant(Base):
         primary_key=True,
         server_default=func.gen_random_uuid(),
     )
-    token_hash: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(
+        String, unique=True, nullable=False, index=True
+    )
     user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
