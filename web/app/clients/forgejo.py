@@ -1,9 +1,125 @@
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Any, Literal
+
 import httpx
 from fastapi import HTTPException, status
+from pydantic import AliasChoices, AliasPath, BaseModel, Field, field_validator
 
 from app.models.app_settings import AppSettings
+
+
+class Repo(BaseModel):
+    repo_name: str = Field(validation_alias="name")
+    repo_full_name: str = Field(validation_alias="full_name")
+    repo_owner: str = Field(validation_alias=AliasPath("owner", "username"))
+    default_branch: str
+    description: str | None
+    visibility: Literal["private", "public"] = Field(validation_alias="private")
+    html_url: str
+    created_at: datetime
+    updated_at: datetime
+    archived: bool
+    archived_at: datetime | None
+
+    @field_validator("visibility", mode="before")
+    @classmethod
+    def map_visibility(cls, value: Any) -> Literal["private", "public"]:
+        if not isinstance(value, bool):
+            raise TypeError(f"expected a boolean, got {value!r}")
+        return "private" if value else "public"
+
+
+class Commit(BaseModel):
+    id: str = Field(validation_alias=AliasChoices("sha", "id"))
+    message: str
+    url: str
+    created_at: datetime = Field(validation_alias="timestamp")
+
+
+class Branch(BaseModel):
+    name: str
+    protected: bool
+    commit: Commit
+
+
+async def get_repos(app_settings: AppSettings, access_token: str) -> list[Repo]:
+    """Get the user's repositories from the Forgejo API.
+    Args:
+        access_token: The Forgejo API token.
+    Returns:
+        A list of repositories.
+    """
+
+    repos = await get(app_settings, "/api/v1/user/repos", access_token)
+    if not repos:
+        return []
+    return [Repo.model_validate(r) for r in repos]
+
+
+async def get_branches(
+    app_settings: AppSettings,
+    access_token: str,
+    owner: str,
+    repo: str,
+    *,
+    limit=10,
+    page=1,
+) -> list[Branch]:
+    """Get the branches of a repository from the Forgejo API.
+    Args:
+        access_token: The Forgejo API token.
+        owner: The owner of the repository.
+        repo: The name of the repository.
+        limit: The maximum number of branches to return.
+        page: The page number to return.
+    Returns:
+        A list of branches.
+    """
+
+    branches = await get(
+        app_settings,
+        f"/api/v1/repos/{owner}/{repo}/branches?limit={limit}&page={page}",
+        access_token,
+    )
+    if not branches:
+        return []
+    return [Branch.model_validate(b) for b in branches]
+
+
+async def get_commits(
+    app_settings: AppSettings,
+    access_token: str,
+    owner: str,
+    repo: str,
+    *,
+    branch: str,
+    limit: int = 10,
+    page: int = 1,
+) -> list[Commit]:
+    """Get the commits of a branch from the Forgejo API.
+
+    Args:
+        access_token: The Forgejo API token.
+        owner: The owner of the repository.
+        repo: The name of the repository.
+        branch: The branch to list commits for.
+        limit: The maximum number of commits to return.
+        page: The page number to return.
+
+    Returns:
+        A list of commits.
+    """
+    commits = await get(
+        app_settings,
+        f"/api/v1/repos/{owner}/{repo}/commits?branch={branch}&limit={limit}&page={page}",
+        access_token,
+    )
+    if not commits:
+        return []
+    return commits
+    # return [Commit.model_validate(c) for c in commits]
 
 
 async def post(app_settings: AppSettings, path: str, data: dict) -> dict:
@@ -37,7 +153,9 @@ async def post(app_settings: AppSettings, path: str, data: dict) -> dict:
     return resp.json()
 
 
-async def get(app_settings: AppSettings, path: str, access_token: str) -> dict | list[dict]:
+async def get(
+    app_settings: AppSettings, path: str, access_token: str
+) -> dict | list[dict]:
     """Send a GET request to the Forgejo API.
 
     Args:
