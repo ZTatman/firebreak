@@ -7,9 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.auth.crypto import encrypt_optional
-from app.config import get_fernet
 from app.models.app_settings import AppSettings
 from app.models.user import LinkedIdentity, User
+from app.settings import get_fernet
 
 
 async def find_or_create_user(
@@ -44,7 +44,9 @@ async def find_or_create_user(
             identity.access_token_encrypted = encrypt_optional(fernet, access_token_raw)
             identity.access_token_expires_at = access_token_expires_at
         if refresh_token_raw is not None:
-            identity.refresh_token_encrypted = encrypt_optional(fernet, refresh_token_raw)
+            identity.refresh_token_encrypted = encrypt_optional(
+                fernet, refresh_token_raw
+            )
         user = identity.user
         if email:
             user.email = email

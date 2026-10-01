@@ -7,25 +7,27 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import func as sql_func
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
-from sqlalchemy import func as sql_func, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app import models as _models  # noqa: F401 - register ORM tables on metadata
 from app.auth.session import get_current_session, get_optional_session
-from app.config import get_settings
 from app.database import Base
 from app.middleware import SetupRequiredMiddleware
 from app.models.app_settings import AppSettings
 from app.models.session import Session as UserBrowserSession
 from app.routers import auth, links, settings, setup
+from app.settings import get_settings
 from app.templating import templates
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage database engine lifecycle and load app settings."""
+
     boot_settings = get_settings()
     engine = create_async_engine(
         url=boot_settings.database_url,
@@ -69,14 +71,26 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
+# Initialize app
 app = FastAPI(lifespan=lifespan)
+
+
+# Middleware
 app.add_middleware(SetupRequiredMiddleware)
 
-app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+
+# Static files
+app.mount(
+    "/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static"
+)
+
+
+# Routers
 app.include_router(auth.router)
 app.include_router(links.router)
 app.include_router(settings.router)
 app.include_router(setup.router)
+
 
 ERROR_TITLES = {
     400: "Bad Request",
@@ -88,9 +102,13 @@ ERROR_TITLES = {
 }
 
 
+# Http exception handler
 @app.exception_handler(StarletteHTTPException)
-async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> Response:
+async def http_exception_handler(
+    request: Request, exc: StarletteHTTPException
+) -> Response:
     """Render a styled error page for browser requests, JSON for API clients."""
+
     accept = request.headers.get("accept", "")
     if "text/html" in accept:
         return templates.TemplateResponse(
@@ -108,7 +126,8 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
 
 @app.get("/", response_class=HTMLResponse)
 async def root(
-    request: Request, sess: Annotated[UserBrowserSession | None, Depends(get_optional_session)]
+    request: Request,
+    sess: Annotated[UserBrowserSession | None, Depends(get_optional_session)],
 ) -> Response:
     return templates.TemplateResponse(
         request,

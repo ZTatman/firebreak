@@ -39,7 +39,10 @@ def get_settings() -> Settings:
 
 @lru_cache
 def get_fernet() -> Fernet:
-    """Return a cached Fernet cipher from the TOKEN_ENCRYPTION_KEY env var."""
+    """
+    Get a Fernet cipher from the TOKEN_ENCRYPTION_KEY env var.
+    Return a cached Fernet cipher from the TOKEN_ENCRYPTION_KEY env var.
+    """
     key = get_settings().token_encryption_key
     if not key:
         raise ValueError(

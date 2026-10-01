@@ -4,16 +4,17 @@ from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
-from starlette.responses import Response
-from sqlalchemy import func as sql_func, select
+from sqlalchemy import func as sql_func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import Response
 
 from app.auth.crypto import encrypt_token
 from app.auth.session import lookup_session
-from app.config import get_fernet
 from app.deps import get_db
 from app.models.app_settings import AppSettings
 from app.models.user import User
+from app.settings import get_fernet
 from app.templating import templates
 
 router = APIRouter(prefix="/setup", tags=["setup"])
@@ -46,7 +47,9 @@ async def _require_auth_if_configured(
 
 
 @router.get("", dependencies=[Depends(_require_auth_if_configured)])
-async def setup_page(request: Request, db: Annotated[AsyncSession, Depends(get_db)]) -> Response:
+async def setup_page(
+    request: Request, db: Annotated[AsyncSession, Depends(get_db)]
+) -> Response:
     """Render the setup wizard. Pre-fills fields when reconfiguring."""
     existing = request.app.state.app_settings
     user_count = await db.scalar(select(sql_func.count()).select_from(User)) or 0
@@ -58,7 +61,9 @@ async def setup_page(request: Request, db: Annotated[AsyncSession, Depends(get_d
         "reconfiguring": existing is not None and has_users,
         "forgejo_base_url": existing.forgejo_base_url if existing else "",
         "forgejo_oauth_client_id": existing.forgejo_oauth_client_id if existing else "",
-        "firebreak_public_base_url": existing.firebreak_public_base_url if existing else "",
+        "firebreak_public_base_url": existing.firebreak_public_base_url
+        if existing
+        else "",
         "oauth_callback_url": f"{public_base}/auth/callback/forgejo",
     }
     return templates.TemplateResponse(request, "setup.html", ctx)
