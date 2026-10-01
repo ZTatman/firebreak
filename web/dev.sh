@@ -10,7 +10,7 @@ echo "Starting local Postgres and Adminer..."
 docker compose -f ../docker-compose.yml up -d db adminer
 
 echo "Building Tailwind CSS..."
-./tailwindcss -i ./app/static/css/input.css -o ./app/static/css/output.css
+pnpm run css
 
 echo "Starting Firebreak dev server..."
 echo "  FastAPI: http://localhost:8000"
@@ -18,9 +18,11 @@ echo "  Adminer: http://localhost:8080"
 echo "           PostgreSQL / db / firebreak / firebreak / firebreak_db"
 echo "  CSS:     watching app/static/css/input.css"
 
-./tailwindcss -i ./app/static/css/input.css -o ./app/static/css/output.css --watch &
+set -m
+pnpm run css:watch &
 TW_PID=$!
+set +m
 
-trap "kill $TW_PID 2>/dev/null" EXIT
+trap "kill -- -$TW_PID 2>/dev/null" EXIT
 
 uv run uvicorn app.main:app --reload --port 8000

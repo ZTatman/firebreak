@@ -1,0 +1,12 @@
+{
+  "name": "@firebreak/web",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "css": "tailwindcss -i ./app/static/css/input.css -o ./app/static/css/output.css",
+    "css:watch": "tailwindcss -i ./app/static/css/input.css -o ./app/static/css/output.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.0"
+  }
+}

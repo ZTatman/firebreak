@@ -1,3 +1,6 @@
 packages:
   - cli
+  - web
 
+allowBuilds:
+  "@parcel/watcher": false
