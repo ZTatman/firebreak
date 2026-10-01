@@ -26,6 +26,12 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 
 ## Documented obstacles
 
+### Shared dependency aliases created circular imports
+**Area:** web/app/deps.py, web/app/auth/session.py, web/app/settings.py
+**Obstacle:** Moving session aliases into deps.py made it import auth/session.py, which already imports get_db from deps.py. Renaming config.py to settings.py also left stale imports.
+**Solution/Workaround:** Keep get_db in deps.py and dependency aliases local to their consuming modules. Update imports to app.settings and import AppSettings directly from app.models.app_settings.
+**Preference:** Keep dependency wiring simple while building the feature; defer shared alias extraction.
+
 ### TypeScript composite builds fail with no output
 **Area:** cli/tsconfig.json, tsconfig.base.json
 **Obstacle:** When `composite: true` is set in tsconfig, TypeScript requires proper project references to build. The CLI package was building but producing no output files, causing "cannot find module" errors.
@@ -127,3 +133,27 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Obstacle:** CLI setup and verification accepted remote `http://` Forgejo URLs, allowing the PAT to be sent without transport encryption.
 **Solution/Workaround:** Centralize Forgejo URL validation, require HTTPS for non-local endpoints, and allow HTTP only for the documented `forgejo` service and loopback hosts. Validate again inside authenticated checks before constructing requests.
 **Preference:** Reject insecure remote transport instead of adding an acknowledgement flag.
+
+### Tailwind standalone CLI was killed by macOS code signing
+**Area:** web/tailwindcss, web/dev.sh
+**Obstacle:** The downloaded standalone Tailwind binary is ad-hoc ("linker-signed") only. macOS AMFI rejected it with `has no CMS blob` / `Unrecoverable CT signature issue`, and the kernel denied the page at offset `0x4b00000` and sent SIGKILL. `dev.sh` uses `set -euo pipefail`, so the script aborted silently with exit 137 and no error message.
+**Solution/Workaround:** Resolved by migrating the web CSS build to pnpm (`@tailwindcss/cli`), which ships a normally signed binary. If the standalone binary is ever re-downloaded, fix with `xattr -c web/tailwindcss && codesign --force --sign - web/tailwindcss`. Diagnose this class of failure with `/usr/bin/log show --predicate 'eventMessage CONTAINS[c] "tailwind"'`.
+**Preference:** Prefer the pnpm-managed CLI; do not re-add the standalone binary.
+
+### Tailwind `--watch` exits when stdin is closed
+**Area:** web/package.json (`css:watch` script)
+**Obstacle:** Tailwind v4 `--watch` keeps watching only while stdin is open. Under non-interactive shells and some CI contexts stdin closes immediately, so the watcher builds once, exits 0, and silently stops watching. This looks identical to a broken watcher and is easy to misdiagnose.
+**Solution/Workaround:** No change needed for normal use — `dev.sh` backgrounds the watcher from an interactive terminal, which inherits an open stdin. If a caller needs watching without a tty, pass `--watch=always`.
+**Preference:** Use bare `--watch` for interactive dev; reserve `--watch=always` for headless callers.
+
+### pnpm install failed with exit 1 on blocked build scripts
+**Area:** pnpm-workspace.yaml
+**Obstacle:** pnpm 10 does not run dependency lifecycle scripts unless allowlisted, so `@parcel/watcher` (a dep of `@tailwindcss/cli`) was skipped and `pnpm install` exited **1** with `ERR_PNPM_IGNORED_BUILDS`. That would break CI and Docker builds.
+**Solution/Workaround:** Added `allowBuilds: {"@parcel/watcher": false}` to `pnpm-workspace.yaml`. `false` is correct — the prebuilt platform package (`@parcel/watcher-darwin-arm64`) already provides the native binding, so the node-gyp build is unnecessary; watch mode verified working. Note `onlyBuiltDependencies` is deprecated as of pnpm v10.26.0 and is silently ignored.
+**Preference:** Set `allowBuilds` explicitly per dependency rather than `dangerouslyAllowAllBuilds`.
+
+### Killing a pnpm-wrapped watcher orphaned the node process
+**Area:** web/dev.sh
+**Obstacle:** `pnpm run` spawns node as a child, so `$!` captured pnpm's PID rather than the Tailwind process. The `trap "kill $TW_PID"` cleanup killed the wrapper and left the node watcher running, accumulating orphans across dev-server restarts.
+**Solution/Workaround:** Enable job control with `set -m` before backgrounding so the job becomes a process-group leader, then kill the group: `kill -- -$TW_PID`.
+**Preference:** When backgrounding a package-manager wrapper, always kill the process group rather than the wrapper PID.
