@@ -32,10 +32,27 @@ class Repo(BaseModel):
 
 
 class Commit(BaseModel):
+    """A commit, normalized across Forgejo's two payload shapes.
+
+    ``/branches`` nests a trimmed commit keyed ``id``/``timestamp``/``url``,
+    while ``/commits`` returns a flat GitHub-style object keyed
+    ``sha``/``commit.message``/``html_url``/``created``. Each field therefore
+    accepts either shape.
+    """
+
     id: str = Field(validation_alias=AliasChoices("sha", "id"))
-    message: str
-    url: str
-    created_at: datetime = Field(validation_alias="timestamp")
+    message: str = Field(
+        validation_alias=AliasChoices("message", AliasPath("commit", "message"))
+    )
+    url: str = Field(validation_alias=AliasChoices("html_url", "url"))
+    created_at: datetime = Field(
+        validation_alias=AliasChoices(
+            "timestamp",
+            "created_at",
+            "created",
+            AliasPath("commit", "committer", "date"),
+        )
+    )
 
 
 class Branch(BaseModel):
@@ -64,8 +81,8 @@ async def get_branches(
     owner: str,
     repo: str,
     *,
-    limit=10,
-    page=1,
+    limit: int = 10,
+    page: int = 1,
 ) -> list[Branch]:
     """Get the branches of a repository from the Forgejo API.
     Args:
@@ -94,7 +111,7 @@ async def get_commits(
     owner: str,
     repo: str,
     *,
-    branch: str,
+    ref: str,
     limit: int = 10,
     page: int = 1,
 ) -> list[Commit]:
@@ -104,7 +121,7 @@ async def get_commits(
         access_token: The Forgejo API token.
         owner: The owner of the repository.
         repo: The name of the repository.
-        branch: The branch to list commits for.
+        ref: The branch name, commit sha, or tag to list commits for.
         limit: The maximum number of commits to return.
         page: The page number to return.
 
@@ -113,13 +130,12 @@ async def get_commits(
     """
     commits = await get(
         app_settings,
-        f"/api/v1/repos/{owner}/{repo}/commits?branch={branch}&limit={limit}&page={page}",
+        f"/api/v1/repos/{owner}/{repo}/commits?sha={ref}&limit={limit}&page={page}",
         access_token,
     )
     if not commits:
         return []
-    return commits
-    # return [Commit.model_validate(c) for c in commits]
+    return [Commit.model_validate(c) for c in commits]
 
 
 async def post(app_settings: AppSettings, path: str, data: dict) -> dict:
