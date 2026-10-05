@@ -61,9 +61,11 @@ async def setup_page(
         "reconfiguring": existing is not None and has_users,
         "forgejo_base_url": existing.forgejo_base_url if existing else "",
         "forgejo_oauth_client_id": existing.forgejo_oauth_client_id if existing else "",
-        "firebreak_public_base_url": existing.firebreak_public_base_url
-        if existing
-        else "",
+        # Pre-fill with the request's own base URL so the field is never
+        # accidentally left blank: an empty value only works while the caller
+        # is browsing the same origin that Forgejo redirects back to, and any
+        # generated share link needs an externally resolvable address.
+        "firebreak_public_base_url": public_base,
         "oauth_callback_url": f"{public_base}/auth/callback/forgejo",
     }
     return templates.TemplateResponse(request, "setup.html", ctx)

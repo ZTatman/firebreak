@@ -112,16 +112,17 @@
           <label for="firebreak_public_base_url"
                  class="block text-xs font-semibold uppercase tracking-[0.05em] text-[#f7f2e8]/50 mb-1.5">
             Public Base URL
-            <span class="ml-1 normal-case tracking-normal font-normal text-[#f7f2e8]/30">(optional)</span>
           </label>
           <input type="url"
                  id="firebreak_public_base_url"
                  name="firebreak_public_base_url"
                  class="block w-full rounded-md border border-[#f7f2e8]/14 bg-[#1f2226] px-3 py-2.5 text-sm text-[#f7f2e8] placeholder:text-[#f7f2e8]/30 focus:border-[#f7f2e8]/30 focus:outline-none focus:ring-2 focus:ring-[#f7f2e8]/10"
-                 placeholder="https://share.example.com"
+                 required
                  value="{{ firebreak_public_base_url }}" />
           <p class="mt-1.5 text-xs text-[#f7f2e8]/30">
-            Your production domain for OAuth redirects. Leave blank on localhost &mdash; Firebreak will use <code class="font-mono text-[#f7f2e8]/40">http://localhost:8000</code> automatically.
+            The address Forgejo redirects back to after sign-in, and the origin
+            share links point at. Pre-filled from how you reached this page
+            &mdash; change it to your real domain once Firebreak is deployed.
           </p>
         </div>
         <button type="submit" class="btn btn-primary w-full mt-2">
