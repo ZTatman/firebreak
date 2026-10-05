@@ -71,11 +71,10 @@ async def lookup_session(
     sess = result.scalar_one_or_none()
     if sess is None:
         return None
-    # Track activity whenever a valid cookie is used, then refresh the related
-    # user so route handlers can safely access sess.user.
-    sess.last_seen_at = now
-    await db.commit()
-    await db.refresh(sess, attribute_names=["user"])
+    # sess.user is eagerly loaded via selectinload and the sessionmaker uses
+    # expire_on_commit=False, so it stays accessible without a refresh. last_seen_at
+    # is intentionally not updated here to keep auth reads free of writes; it is
+    # reserved for a future sliding-window expiry feature.
     return sess
 
 
