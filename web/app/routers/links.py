@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -94,3 +94,32 @@ async def get_repository_branches(
         app_settings, access_token, owner, repo, limit=limit, page=page
     )
     return branches
+
+
+@router.get("/repositories/{repo}/commits")
+async def get_repository_commits(
+    app_settings: Annotated[AppSettings, Depends(get_app_settings)],
+    sess: Annotated[UserBrowserSession, Depends(get_current_session)],
+    access_token: Annotated[str, Depends(get_forgejo_token)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    repo: Annotated[str, Path(min_length=1, description="The name of the repository")],
+    ref: Annotated[str, Query(description="Branch name, commit sha, or tag")] = "main",
+    limit: int = 10,
+    page: int = 1,
+):
+    # Derive {owner} path param from users linked identity provider server-side
+    stmt = select(LinkedIdentity).where(
+        LinkedIdentity.user_id == sess.user_id, LinkedIdentity.provider == "forgejo"
+    )
+    result = await db.execute(stmt)
+    identity = result.scalar_one_or_none()
+    if identity is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No linked identity for forgejo was found. Please sign-in and try again.",
+        )
+    owner = identity.provider_username
+    commits = await forgejo.get_commits(
+        app_settings, access_token, owner, repo, ref=ref, limit=limit, page=page
+    )
+    return commits
