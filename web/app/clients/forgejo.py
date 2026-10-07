@@ -61,15 +61,34 @@ class Branch(BaseModel):
     commit: Commit
 
 
-async def get_repos(app_settings: AppSettings, access_token: str) -> list[Repo]:
+async def get_repos(
+    app_settings: AppSettings,
+    access_token: str,
+    *,
+    limit: int = 30,
+    page: int = 1,
+) -> list[Repo]:
     """Get the user's repositories from the Forgejo API.
+
+    Forgejo paginates this endpoint and caps `limit` at the instance's
+    max_response_items (50 on the default config), so a caller asking for
+    everything silently gets one page. Paging is exposed here rather than
+    looped internally so the caller can decide how many round trips to spend.
+
     Args:
+        app_settings: The application settings.
         access_token: The Forgejo API token.
+        limit: The maximum number of repositories to return.
+        page: The page number to return.
     Returns:
         A list of repositories.
     """
 
-    repos = await get(app_settings, "/api/v1/user/repos", access_token)
+    repos = await get(
+        app_settings,
+        f"/api/v1/user/repos?limit={limit}&page={page}",
+        access_token,
+    )
     if not repos:
         return []
     return [Repo.model_validate(r) for r in repos]

@@ -119,6 +119,7 @@ async def get_repository_commits(
             detail="No linked identity for forgejo was found. Please sign-in and try again.",
         )
     owner = identity.provider_username
+
     commits = await forgejo.get_commits(
         app_settings, access_token, owner, repo, ref=ref, limit=limit, page=page
     )
