@@ -157,3 +157,45 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Obstacle:** `pnpm run` spawns node as a child, so `$!` captured pnpm's PID rather than the Tailwind process. The `trap "kill $TW_PID"` cleanup killed the wrapper and left the node watcher running, accumulating orphans across dev-server restarts.
 **Solution/Workaround:** Enable job control with `set -m` before backgrounding so the job becomes a process-group leader, then kill the group: `kill -- -$TW_PID`.
 **Preference:** When backgrounding a package-manager wrapper, always kill the process group rather than the wrapper PID.
+
+### Owned repository pagination needs an owner-specific endpoint
+**Area:** web/app/clients/forgejo.py, web/app/routers/repositories.py, web/app/main.py
+**Obstacle:** Forgejo's `/user/repos` handler does not read `type=owner`; filtering accessible repositories after pagination can produce sparse pages and misleading totals.
+**Solution/Workaround:** Use authenticated `/users/{username}/repos` for owned listings and preserve `x-total-count`. Dashboard and JSON listings consume the returned page without filtering it again.
+**Preference:** Filter upstream before paginating; keep the JSON list response shape unchanged. User approved removing redundant consumer-side owner checks because silently dropping results could make page contents disagree with pagination metadata.
+
+### Repository failures must not replace the dashboard
+**Area:** web/app/main.py, web/app/templates/dashboard.html
+**Obstacle:** Fetch failures and token/identity dependencies could abort the whole dashboard, including its no-PAT state.
+**Solution/Workaround:** Resolve repository credentials and identity only when a PAT exists, inside the dashboard's repository error boundary. Render expected 403/502/503 failures inline and hide pagination on error; leave authentication outside that boundary. Use one dashboard page-size constant.
+**Preference:** Keep the dashboard usable without masking unexpected application errors.
+
+### Declarative base lint error remains deferred
+**Area:** web/app/database.py
+**Obstacle:** Existing `Base.type_annotation_map` triggers Ruff RUF012 for an unannotated mutable class attribute.
+**Solution/Workaround:** Deferred outside the repository-table cleanup. Annotate the mapping with `ClassVar` when addressing this lint issue.
+**Preference:** Do not mix unrelated database cleanup into repository UI changes.
+
+### Create-share-link button points to an unfinished route
+**Area:** web/app/templates/dashboard.html, web/app/routers/links.py
+**Obstacle:** The existing button points to `/links/create`, which has no handler; `POST /links/` is still a 501 stub and the public viewer is not built.
+**Solution/Workaround:** Deferred to the share-link implementation. The user intends to write link creation themselves.
+**Preference:** Keep repository-table cleanup separate from implementing the share-link flow.
+
+### Table divider utility has no matching theme token
+**Area:** web/app/templates/dashboard.html, web/app/static/css/input.css
+**Obstacle:** Both dashboard tables use `divide-border-subtle`, but no `--color-border-subtle` token exists. The repository table copied the existing share-links table styling.
+**Solution/Workaround:** Replaced `divide-border-subtle` with the existing semantic `divide-border` utility in both dashboard tables, as approved by the user.
+**Preference:** Reuse the existing border token rather than adding an appearance-specific token.
+
+### Automated tests deferred while learning the feature
+**Area:** web/tests/
+**Obstacle:** The user wants to understand how tests work before adding them to this feature.
+**Solution/Workaround:** Removed the newly added repository tests at the user's request. Defer adding automated tests until the user is ready; use manual verification in the meantime.
+**Preference:** Explain testing before introducing test files; do not add them yet.
+
+### Forgejo page-size caps can hide remaining repositories
+**Area:** web/app/clients/forgejo.py, web/app/main.py
+**Obstacle:** Calculating the next page from the requested limit stops pagination early when Forgejo's configured page-size cap is lower.
+**Solution/Workaround:** Preserve the `next` relation from Forgejo's `Link` header as `RepoPage.has_next_page` and use it directly on the dashboard.
+**Preference:** Use upstream pagination links rather than assuming the requested page size was honored.
