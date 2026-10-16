@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
+from urllib.parse import quote
 
 import httpx
 from fastapi import HTTPException, status
@@ -11,6 +13,8 @@ from app.models.app_settings import AppSettings
 
 
 class Repo(BaseModel):
+    """A repository returned by Forgejo."""
+
     repo_name: str = Field(validation_alias="name")
     repo_full_name: str = Field(validation_alias="full_name")
     repo_owner: str = Field(validation_alias=AliasPath("owner", "username"))
@@ -29,6 +33,13 @@ class Repo(BaseModel):
         if not isinstance(value, bool):
             raise TypeError(f"expected a boolean, got {value!r}")
         return "private" if value else "public"
+
+
+@dataclass(frozen=True)
+class RepoPage:
+    repos: list[Repo]
+    total_count: int | None
+    has_next_page: bool
 
 
 class Commit(BaseModel):
@@ -56,6 +67,8 @@ class Commit(BaseModel):
 
 
 class Branch(BaseModel):
+    """A branch returned by Forgejo."""
+
     name: str
     protected: bool
     commit: Commit
@@ -67,7 +80,8 @@ async def get_repos(
     *,
     limit: int = 30,
     page: int = 1,
-) -> list[Repo]:
+    owner: str | None = None,
+) -> RepoPage:
     """Get the user's repositories from the Forgejo API.
 
     Forgejo paginates this endpoint and caps `limit` at the instance's
@@ -80,18 +94,46 @@ async def get_repos(
         access_token: The Forgejo API token.
         limit: The maximum number of repositories to return.
         page: The page number to return.
+        owner: Restrict results to repositories owned by this username.
     Returns:
-        A list of repositories.
+        The repositories and Forgejo's total-count pagination metadata.
     """
-
-    repos = await get(
-        app_settings,
-        f"/api/v1/user/repos?limit={limit}&page={page}",
-        access_token,
+    params: dict[str, str | int] = {"limit": limit, "page": page}
+    endpoint = f"/users/{quote(owner, safe='')}/repos" if owner else "/user/repos"
+    path = f"/api/v1{endpoint}?{httpx.QueryParams(params)}"
+    try:
+        async with httpx.AsyncClient(
+            base_url=app_settings.forgejo_base_url, timeout=30.0
+        ) as client:
+            response = await client.get(
+                path, headers={"Authorization": f"token {access_token}"}
+            )
+    except httpx.RequestError:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Cannot reach Forgejo. Check your connection settings.",
+        )
+    if response.status_code in {401, 403}:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Forgejo rejected your access token. Check its permissions or replace it in settings.",
+        )
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Forgejo could not load repositories ({response.status_code}). Try again later.",
+        )
+    repos = [Repo.model_validate(repo) for repo in response.json()]
+    total_count_header = response.headers.get("x-total-count")
+    try:
+        total_count = int(total_count_header) if total_count_header else None
+    except ValueError:
+        total_count = None
+    return RepoPage(
+        repos=repos,
+        total_count=total_count,
+        has_next_page="next" in response.links,
     )
-    if not repos:
-        return []
-    return [Repo.model_validate(r) for r in repos]
 
 
 async def get_branches(

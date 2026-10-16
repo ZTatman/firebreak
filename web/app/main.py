@@ -19,7 +19,7 @@ from app.database import Base
 from app.middleware import SetupRequiredMiddleware
 from app.models.app_settings import AppSettings
 from app.models.session import Session as UserBrowserSession
-from app.routers import auth, links, settings, setup
+from app.routers import auth, links, repositories, settings, setup
 from app.settings import get_settings
 from app.templating import templates
 
@@ -88,6 +88,7 @@ app.mount(
 # Routers
 app.include_router(auth.router)
 app.include_router(links.router)
+app.include_router(repositories.router)
 app.include_router(settings.router)
 app.include_router(setup.router)
 
