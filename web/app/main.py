@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func as sql_func
@@ -15,12 +15,14 @@ from starlette.responses import Response
 
 from app import models as _models  # noqa: F401 - register ORM tables on metadata
 from app.auth.session import get_current_session, get_optional_session
+from app.clients import forgejo
 from app.database import Base
+from app.deps import get_db
 from app.middleware import SetupRequiredMiddleware
 from app.models.app_settings import AppSettings
 from app.models.session import Session as UserBrowserSession
 from app.routers import auth, links, repositories, settings, setup
-from app.settings import get_settings
+from app.settings import get_app_settings, get_settings
 from app.templating import templates
 
 
@@ -137,15 +139,51 @@ async def root(
     )
 
 
+REPOS_PER_PAGE = 30
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(
-    request: Request, sess: Annotated[UserBrowserSession, Depends(get_current_session)]
+    request: Request,
+    sess: Annotated[UserBrowserSession, Depends(get_current_session)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    app_settings: Annotated[AppSettings, Depends(get_app_settings)],
+    page: Annotated[int, Query(ge=1)] = 1,
 ) -> Response:
+    repos = []
+    total_count = 0
+    has_next_page = False
+    repo_error = None
+    if sess.user.has_pat:
+        try:
+            access_token = await repositories.get_forgejo_token(sess)
+            owner = await repositories.get_forgejo_owner(sess, db)
+            repo_page = await forgejo.get_repos(
+                app_settings,
+                access_token,
+                limit=REPOS_PER_PAGE,
+                page=page,
+                owner=owner,
+            )
+        except HTTPException as exc:
+            if exc.status_code not in {403, 502, 503}:
+                raise
+            repo_error = exc.detail
+        else:
+            repos = repo_page.repos
+            total_count = repo_page.total_count or 0
+            has_next_page = repo_page.has_next_page
     return templates.TemplateResponse(
         request,
         "dashboard.html",
         {
             "user": sess.user,
             "pat_registered": sess.user.has_pat,
+            "repos": repos,
+            "repo_error": repo_error,
+            "repo_page": page,
+            "repo_total_count": total_count,
+            "repo_has_previous_page": page > 1,
+            "repo_has_next_page": has_next_page,
         },
     )
