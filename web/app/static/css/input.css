@@ -534,16 +534,23 @@
         align-content: start;
     }
 
-    .picker-load-scope > :is(.picker-loading, .picker-loaded) {
+    .picker-load-scope > :is(.picker-loading, .picker-loaded, .picker-load-failed) {
         grid-area: 1 / 1;
     }
 
     .picker-loading,
+    .picker-load-failed,
+    .picker-loaded[inert],
     .picker-load-scope.htmx-request > .picker-loaded {
         visibility: hidden;
     }
 
-    .picker-load-scope.htmx-request > .picker-loading {
+    .picker-loaded[inert] {
+        opacity: 0;
+    }
+
+    .picker-load-scope.htmx-request > .picker-loading,
+    .picker-load-scope:not(.htmx-request):has(> .picker-loaded[inert]) > .picker-load-failed {
         visibility: visible;
     }
 

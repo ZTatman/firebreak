@@ -61,6 +61,11 @@
           </div>
         </div>
       </dialog>
+      <script>
+        document.getElementById("snapshot-picker").addEventListener("htmx:beforeRequest", ({ detail: { target } }) => {
+          if (target.matches("#snapshot-branch-content, #snapshot-commit-content")) target.inert = true;
+        });
+      </script>
     {% endif %}
     <section class="grid gap-4 md:grid-cols-3">
       <div class="p-4 card">

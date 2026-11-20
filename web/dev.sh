@@ -19,7 +19,7 @@ echo "           PostgreSQL / db / firebreak / firebreak / firebreak_db"
 echo "  CSS:     watching app/static/css/input.css"
 
 set -m
-pnpm run css:watch &
+pnpm run css:watch </dev/null &
 TW_PID=$!
 set +m
 

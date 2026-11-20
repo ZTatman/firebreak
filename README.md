@@ -72,7 +72,7 @@ Open `http://localhost:8000` in your browser. On first boot, Firebreak redirects
 
 - **Forgejo instance URL** — use HTTPS unless Forgejo is a local service or loopback endpoint
 - **OAuth credentials** — register an OAuth application in Forgejo first (Settings → Applications → Create OAuth2 Application), then paste the Client ID and Client Secret
-- **Public base URL** (optional) — your production domain for OAuth redirects
+- **Public base URL** (required) — confirm the pre-filled URL or replace it with the Firebreak URL you want to use for OAuth redirects
 
 ### 4. Sign In and Register Your Token
 

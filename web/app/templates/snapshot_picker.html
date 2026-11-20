@@ -13,7 +13,7 @@
               hx-get="{{ url_for('get_snapshot_picker_step', step='branch').path }}"
               hx-trigger="change"
               hx-target="#snapshot-branch-content"
-              hx-swap="innerHTML"
+              hx-swap="outerHTML"
               hx-indicator="#snapshot-branch-scope"
               hx-sync="#snapshot-picker:replace">
         <button type="button"><selectedcontent></selectedcontent></button>
@@ -25,8 +25,11 @@
   </div>
   <div id="snapshot-branch-scope" class="picker-load-scope">
     <p class="picker-status picker-loading" role="status">Loading branches…</p>
-    <div id="snapshot-branch-content" class="picker-loaded">
-      {% block branch_steps %}
+    <p class="picker-status picker-load-failed" role="status" data-state="error">
+      Could not load branches. Choose a repository again or reopen the picker.
+    </p>
+    {% block branch_steps %}
+      <div id="snapshot-branch-content" class="picker-loaded">
         <div class="picker-step">
           <span class="picker-step-index" aria-hidden="true">2</span>
           <div>
@@ -40,7 +43,7 @@
                     hx-trigger="change"
                     hx-include="#snapshot-repository"
                     hx-target="#snapshot-commit-content"
-                    hx-swap="innerHTML"
+                    hx-swap="outerHTML"
                     hx-indicator="#snapshot-commit-scope"
                     hx-sync="#snapshot-picker:replace">
               <button type="button"><selectedcontent></selectedcontent></button>
@@ -60,7 +63,7 @@
                           hx-get="{{ url_for('get_snapshot_picker_step', step='branch').path }}"
                           hx-include="#snapshot-repository"
                           hx-target="#snapshot-branch-content"
-                          hx-swap="innerHTML"
+                          hx-swap="outerHTML"
                           hx-indicator="#snapshot-branch-scope"
                           hx-sync="#snapshot-picker:replace">Retry</button>
                 {% endif %}
@@ -72,8 +75,11 @@
         </div>
         <div id="snapshot-commit-scope" class="picker-load-scope">
           <p class="picker-status picker-loading" role="status">Loading commits…</p>
-          <div id="snapshot-commit-content" class="picker-loaded">
-            {% block commit_step %}
+          <p class="picker-status picker-load-failed" role="status" data-state="error">
+            Could not load commits. Choose a branch again or reopen the picker.
+          </p>
+          {% block commit_step %}
+            <div id="snapshot-commit-content" class="picker-loaded">
               <div class="picker-step">
                 <span class="picker-step-index" aria-hidden="true">3</span>
                 <div>
@@ -115,11 +121,11 @@
                   {% endif %}
                 </div>
               </div>
-            {% endblock %}
-          </div>
+            </div>
+          {% endblock %}
         </div>
-      {% endblock %}
-    </div>
+      </div>
+    {% endblock %}
   </div>
 {% endblock %}
 <!-- djlint:on -->

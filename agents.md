@@ -140,11 +140,11 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Solution/Workaround:** Resolved by migrating the web CSS build to pnpm (`@tailwindcss/cli`), which ships a normally signed binary. If the standalone binary is ever re-downloaded, fix with `xattr -c web/tailwindcss && codesign --force --sign - web/tailwindcss`. Diagnose this class of failure with `/usr/bin/log show --predicate 'eventMessage CONTAINS[c] "tailwind"'`.
 **Preference:** Prefer the pnpm-managed CLI; do not re-add the standalone binary.
 
-### Tailwind `--watch` exits when stdin is closed
-**Area:** web/package.json (`css:watch` script)
-**Obstacle:** Tailwind v4 `--watch` keeps watching only while stdin is open. Under non-interactive shells and some CI contexts stdin closes immediately, so the watcher builds once, exits 0, and silently stops watching. This looks identical to a broken watcher and is easy to misdiagnose.
-**Solution/Workaround:** No change needed for normal use — `dev.sh` backgrounds the watcher from an interactive terminal, which inherits an open stdin. If a caller needs watching without a tty, pass `--watch=always`.
-**Preference:** Use bare `--watch` for interactive dev; reserve `--watch=always` for headless callers.
+### Tailwind watcher can stop on stdin
+**Area:** web/dev.sh, web/package.json (`css:watch` script)
+**Obstacle:** With job control enabled, the background watcher can stop on SIGTTIN when bare `--watch` reads terminal stdin. With closed stdin it instead exits after the first build.
+**Solution/Workaround:** Redirect the background watcher's stdin to `/dev/null` and use `--watch=always`. Keep process-group cleanup in `dev.sh`.
+**Preference:** Keep the watcher independent of terminal input. For an isolated smoke check, run the installed CLI against temporary CSS rather than linking the workspace's `node_modules` into a separate pnpm project.
 
 ### pnpm install failed with exit 1 on blocked build scripts
 **Area:** pnpm-workspace.yaml
@@ -265,3 +265,9 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Obstacle:** Non-JSON responses or invalid JSON shapes raised outside the dashboard/picker's HTTP error boundary. Pydantic v2 also lets a validator's `TypeError` escape validation.
 **Solution/Workaround:** Validate expected JSON shapes in the client, use `ValueError` for field validation, and return a sanitized 502 for malformed data.
 **Preference:** Keep the dashboard and picker usable without displaying upstream response content.
+
+### Failed picker requests can reveal stale selections
+**Area:** web/app/templates/dashboard.html, web/app/templates/snapshot_picker.html
+**Obstacle:** HTMX clears its loading indicator after a failed request without replacing the old branch or commit controls.
+**Solution/Workaround:** Mark the dependent fragment `inert` before sending a request and replace its outer element only when a response swaps. Show an inline error if the old fragment remains after loading.
+**Preference:** Don't allow a stale selection to submit; preserve the dialog's layout during loading and failure.
