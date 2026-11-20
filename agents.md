@@ -129,9 +129,9 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Preference:** A valid token alone is insufficient for repository-access verification.
 
 ### Forgejo PAT could be sent over remote HTTP
-**Area:** cli/src/utils/forgejo-checks.ts, cli/src/commands/config/init.ts
-**Obstacle:** CLI setup and verification accepted remote `http://` Forgejo URLs, allowing the PAT to be sent without transport encryption.
-**Solution/Workaround:** Centralize Forgejo URL validation, require HTTPS for non-local endpoints, and allow HTTP only for the documented `forgejo` service and loopback hosts. Validate again inside authenticated checks before constructing requests.
+**Area:** cli/src/utils/forgejo-checks.ts, cli/src/commands/config/init.ts, web/app/clients/forgejo.py
+**Obstacle:** Accepting remote `http://` Forgejo URLs allowed credentials to be sent without transport encryption.
+**Solution/Workaround:** Require HTTPS for non-local endpoints and allow HTTP only for the documented `forgejo` service and loopback hosts. Validate at each client boundary before sending credentials.
 **Preference:** Reject insecure remote transport instead of adding an acknowledgement flag.
 
 ### Tailwind standalone CLI was killed by macOS code signing
@@ -247,3 +247,21 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Obstacle:** djLint H020 flags the empty element even though the browser fills it from the selected option.
 **Solution/Workaround:** Suppress H020 in the picker fragment and leave its native select markup intact.
 **Preference:** Keep customizable-select styling behind feature queries, with the native picker as the fallback.
+
+### Forgejo owned repository listing requires two PAT scopes
+**Area:** web/app/clients/forgejo.py, web/app/templates/settings.html
+**Obstacle:** Forgejo's `/users/{username}/repos` requires `read:user` and `read:repository`; a PAT with only `read:repository` cannot populate the dashboard or picker.
+**Solution/Workaround:** Name both scopes in setup guidance and the client error for a rejected token.
+**Preference:** Keep the owner-specific listing and its pagination metadata.
+
+### Unqualified branch names can resolve to a tag
+**Area:** web/app/routers/repositories.py, web/app/clients/forgejo.py
+**Obstacle:** Forgejo's commits listing accepts a general Git ref; a tag and branch can have the same name.
+**Solution/Workaround:** Resolve the exact branch with Forgejo's branch endpoint once, then use its tip SHA for every commit page in the picker.
+**Preference:** Leave the JSON commits endpoint's branch/tag/SHA contract unchanged.
+
+### Malformed Forgejo payloads bypassed inline errors
+**Area:** web/app/clients/forgejo.py
+**Obstacle:** Non-JSON responses or invalid JSON shapes raised outside the dashboard/picker's HTTP error boundary. Pydantic v2 also lets a validator's `TypeError` escape validation.
+**Solution/Workaround:** Validate expected JSON shapes in the client, use `ValueError` for field validation, and return a sanitized 502 for malformed data.
+**Preference:** Keep the dashboard and picker usable without displaying upstream response content.

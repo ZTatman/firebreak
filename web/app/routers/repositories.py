@@ -216,6 +216,8 @@ async def _snapshot_options(
     ref: str,
 ) -> list[tuple[str, str]]:
     options: list[tuple[str, str]] = []
+    if step == "commit":
+        ref = await forgejo.get_branch_tip(app_settings, access_token, owner, repo, ref)
     for page in count(1):
         if step == "repository":
             result = await forgejo.get_repos(

@@ -7,9 +7,46 @@ from urllib.parse import quote
 
 import httpx
 from fastapi import HTTPException, status
-from pydantic import AliasChoices, AliasPath, BaseModel, Field, field_validator
+from pydantic import (
+    AliasChoices,
+    AliasPath,
+    BaseModel,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+)
 
 from app.models.app_settings import AppSettings
+
+_LOCAL_HTTP_HOSTS = {"localhost", "127.0.0.1", "::1", "forgejo"}
+
+
+def _authenticated_base_url(value: str) -> httpx.URL:
+    """Require encrypted transport except for documented local Forgejo hosts."""
+    try:
+        url = httpx.URL(value.strip())
+    except httpx.InvalidURL:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Configure a valid Forgejo URL in setup.",
+        ) from None
+
+    local_http = url.scheme == "http" and (
+        url.host in _LOCAL_HTTP_HOSTS or url.host.endswith(".localhost")
+    )
+    if (
+        not url.host
+        or (url.scheme != "https" and not local_http)
+        or url.userinfo
+        or url.query
+        or url.fragment
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Configure an HTTPS Forgejo URL in setup. HTTP is only allowed for local Forgejo endpoints.",
+        )
+    return url
 
 
 class Repo(BaseModel):
@@ -31,7 +68,7 @@ class Repo(BaseModel):
     @classmethod
     def map_visibility(cls, value: Any) -> Literal["private", "public"]:
         if not isinstance(value, bool):
-            raise TypeError(f"expected a boolean, got {value!r}")
+            raise ValueError("expected a boolean")  # noqa: TRY004
         return "private" if value else "public"
 
 
@@ -51,7 +88,10 @@ class Commit(BaseModel):
     accepts either shape.
     """
 
-    id: str = Field(validation_alias=AliasChoices("sha", "id"))
+    id: str = Field(
+        validation_alias=AliasChoices("sha", "id"),
+        pattern=r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$",
+    )
     message: str = Field(
         validation_alias=AliasChoices("message", AliasPath("commit", "message"))
     )
@@ -72,6 +112,27 @@ class Branch(BaseModel):
     name: str
     protected: bool
     commit: Commit
+
+
+_REPOSITORIES = TypeAdapter(list[Repo])
+_BRANCHES = TypeAdapter(list[Branch])
+_BRANCH = TypeAdapter(Branch)
+_COMMITS = TypeAdapter(list[Commit])
+_OBJECT = TypeAdapter(dict[str, Any])
+
+
+def _malformed_response() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail="Forgejo returned unexpected data. Check the Forgejo URL and try again.",
+    )
+
+
+def _parse_json[T](response: httpx.Response, adapter: TypeAdapter[T]) -> T:
+    try:
+        return adapter.validate_json(response.content)
+    except ValidationError:
+        raise _malformed_response() from None
 
 
 async def get_repos(
@@ -101,29 +162,8 @@ async def get_repos(
     params: dict[str, str | int] = {"limit": limit, "page": page}
     endpoint = f"/users/{quote(owner, safe='')}/repos" if owner else "/user/repos"
     path = f"/api/v1{endpoint}?{httpx.QueryParams(params)}"
-    try:
-        async with httpx.AsyncClient(
-            base_url=app_settings.forgejo_base_url, timeout=30.0
-        ) as client:
-            response = await client.get(
-                path, headers={"Authorization": f"token {access_token}"}
-            )
-    except httpx.RequestError:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Cannot reach Forgejo. Check your connection settings.",
-        )
-    if response.status_code in {401, 403}:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Forgejo rejected your access token. Check its permissions or replace it in settings.",
-        )
-    if response.status_code != 200:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Forgejo could not load repositories ({response.status_code}). Try again later.",
-        )
-    repos = [Repo.model_validate(repo) for repo in response.json()]
+    response = await _get(app_settings, path, access_token)
+    repos = _parse_json(response, _REPOSITORIES)
     total_count_header = response.headers.get("x-total-count")
     try:
         total_count = int(total_count_header) if total_count_header else None
@@ -156,15 +196,29 @@ async def get_branches(
         A list of branches.
     """
 
-    branches = await get(
+    response = await _get(
         app_settings,
         f"/api/v1/repos/{quote(owner, safe='')}/{quote(repo, safe='')}/branches?"
         f"{httpx.QueryParams({'limit': limit, 'page': page})}",
         access_token,
     )
-    if not branches:
-        return []
-    return [Branch.model_validate(b) for b in branches]
+    return _parse_json(response, _BRANCHES)
+
+
+async def get_branch_tip(
+    app_settings: AppSettings, access_token: str, owner: str, repo: str, branch: str
+) -> str:
+    """Resolve a branch by name without letting Git choose a tag or other ref."""
+    response = await _get(
+        app_settings,
+        f"/api/v1/repos/{quote(owner, safe='')}/{quote(repo, safe='')}"
+        f"/branches/{quote(branch, safe='')}",
+        access_token,
+    )
+    result = _parse_json(response, _BRANCH)
+    if result.name != branch:
+        raise _malformed_response()
+    return result.commit.id
 
 
 async def get_commits(
@@ -190,15 +244,13 @@ async def get_commits(
     Returns:
         A list of commits.
     """
-    commits = await get(
+    response = await _get(
         app_settings,
         f"/api/v1/repos/{quote(owner, safe='')}/{quote(repo, safe='')}/commits?"
         f"{httpx.QueryParams({'sha': ref, 'limit': limit, 'page': page})}",
         access_token,
     )
-    if not commits:
-        return []
-    return [Commit.model_validate(c) for c in commits]
+    return _parse_json(response, _COMMITS)
 
 
 async def post(app_settings: AppSettings, path: str, data: dict) -> dict:
@@ -212,10 +264,9 @@ async def post(app_settings: AppSettings, path: str, data: dict) -> dict:
     Returns:
         The response from the Forgejo API.
     """
+    base_url = _authenticated_base_url(app_settings.forgejo_base_url)
     try:
-        async with httpx.AsyncClient(
-            base_url=app_settings.forgejo_base_url, timeout=30.0
-        ) as client:
+        async with httpx.AsyncClient(base_url=base_url, timeout=30.0) as client:
             resp = await client.post(
                 path, data=data, headers={"Accept": "application/json"}
             )
@@ -229,26 +280,23 @@ async def post(app_settings: AppSettings, path: str, data: dict) -> dict:
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Forgejo returned an error ({resp.status_code}). Verify your OAuth configuration.",
         )
-    return resp.json()
+    return _parse_json(resp, _OBJECT)
 
 
 async def get(
     app_settings: AppSettings, path: str, access_token: str
-) -> dict | list[dict]:
-    """Send a GET request to the Forgejo API.
+) -> dict[str, Any]:
+    """Fetch a JSON object from the Forgejo API."""
+    return _parse_json(await _get(app_settings, path, access_token), _OBJECT)
 
-    Args:
-        app_settings: The application settings.
-        path: The path to the Forgejo API endpoint.
-        access_token: The authentication token.
 
-    Returns:
-        The response from the Forgejo API as a dictionary or list of dictionaries.
-    """
+async def _get(
+    app_settings: AppSettings, path: str, access_token: str
+) -> httpx.Response:
+    """Fetch a response without dropping headers needed for pagination."""
+    base_url = _authenticated_base_url(app_settings.forgejo_base_url)
     try:
-        async with httpx.AsyncClient(
-            base_url=app_settings.forgejo_base_url, timeout=30.0
-        ) as client:
+        async with httpx.AsyncClient(base_url=base_url, timeout=30.0) as client:
             resp = await client.get(
                 path, headers={"Authorization": f"token {access_token}"}
             )
@@ -257,9 +305,14 @@ async def get(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Cannot reach Forgejo. Check your connection settings.",
         )
-    if resp.status_code != 200:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Forgejo returned an error ({resp.status_code}). Verify your OAuth configuration.",
+    if resp.status_code == 200:
+        return resp
+    if resp.status_code in {401, 403}:
+        detail = (
+            "Forgejo rejected the access token. For repository browsing, "
+            "check that your personal access token is valid and has "
+            "read:user and read:repository scopes."
         )
-    return resp.json()
+    else:
+        detail = f"Forgejo returned an error ({resp.status_code}). Check the connection settings and try again."
+    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail)
