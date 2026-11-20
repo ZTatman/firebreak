@@ -30,15 +30,24 @@ class User(Base):
     def has_pat(self) -> bool:
         return self.pat_encrypted is not None
 
+    # One-to-many relationship with LinkedIdentity: A user could have multiple identitiy providers
+    # LinkedIdentity is a table that stores all the identities of the user
+    # for example, GitHub, GitLab, etc.
     identities: Mapped[list[LinkedIdentity]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
     )
+
+    # One-to-many relationship with Session: A user could have multiple cross-browser sessions
+    # Session is a table that stores all the possible browser sessions of the user
     sessions: Mapped[list[Session]] = relationship(
         "Session",
         back_populates="user",
         cascade="all, delete-orphan",
     )
+
+    # One-to-many relationship with Grant
+    # Grant is a table that stores all the share links a user creates
     grants: Mapped[list[Grant]] = relationship(
         "Grant",
         back_populates="user",

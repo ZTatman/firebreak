@@ -5,14 +5,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from starlette.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import Response
 
 from app.auth.crypto import encrypt_optional
 from app.auth.session import get_current_session
-from app.config import get_fernet
 from app.deps import get_db
 from app.models.session import Session as UserBrowserSession
+from app.settings import get_fernet
 from app.templating import templates
 
 router = APIRouter(prefix="/settings", tags=["settings"])

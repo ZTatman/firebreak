@@ -70,13 +70,15 @@ TOKEN_ENCRYPTION_KEY=your-generated-key-here
 
 Open `http://localhost:8000` in your browser. On first boot, Firebreak redirects to a setup wizard where you configure:
 
-- **Forgejo instance URL** — where your Forgejo server lives
+- **Forgejo instance URL** — use HTTPS unless Forgejo is a local service or loopback endpoint
 - **OAuth credentials** — register an OAuth application in Forgejo first (Settings → Applications → Create OAuth2 Application), then paste the Client ID and Client Secret
-- **Public base URL** (optional) — your production domain for OAuth redirects
+- **Public base URL** (required) — confirm the pre-filled URL or replace it with the Firebreak URL you want to use for OAuth redirects
 
 ### 4. Sign In and Register Your Token
 
-After setup, sign in with your Forgejo account via OAuth. On first login, Firebreak prompts you to register a `read:repository`-scoped Personal Access Token (PAT) to enable share link viewing.
+After setup, sign in with your Forgejo account via OAuth. Register a personal access token (PAT) with `read:user` and `read:repository` so you can browse your repositories and preview snapshots.
+
+See the [Firebreak glossary](docs/glossary.md) for the difference between snapshots, share links, and grants.
 
 ### 5. Alternative Deployments
 

@@ -5,7 +5,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from urllib.parse import urlencode
 
-import httpx
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,56 +12,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.crypto import decrypt_token
 from app.auth.identity import find_or_create_user
 from app.auth.session import create_session, revoke_session
-from app.config import get_app_settings, get_fernet
+from app.clients import forgejo
 from app.deps import get_db
 from app.models.app_settings import AppSettings
+from app.settings import get_app_settings, get_fernet
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-# ── Forgejo API client ──
-
-
-async def _forgejo_post(app_settings: AppSettings, path: str, data: dict) -> dict:
-    url = f"{app_settings.forgejo_base_url}{path}"
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(url, data=data, headers={"Accept": "application/json"})
-    except httpx.RequestError:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Cannot reach Forgejo. Check your connection settings.",
-        )
-    if resp.status_code != 200:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Forgejo returned an error ({resp.status_code}). Verify your OAuth configuration.",
-        )
-    return resp.json()
-
-
-async def _forgejo_get(app_settings: AppSettings, path: str, token: str) -> dict:
-    url = f"{app_settings.forgejo_base_url}{path}"
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(url, headers={"Authorization": f"token {token}"})
-    except httpx.RequestError:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Cannot reach Forgejo. Check your connection settings.",
-        )
-    if resp.status_code != 200:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Forgejo returned an error ({resp.status_code}). Verify your OAuth configuration.",
-        )
-    return resp.json()
 
 
 # ── OAuth CSRF helpers ──
 
 
 def _set_oauth_state_cookie(response: RedirectResponse, state: str) -> None:
+    """Set the OAuth state cookie in the response.
+
+    Args:
+        response: The response to set the cookie in.
+        state: The state to set in the cookie.
+    """
     response.set_cookie(
         key="oauth_state",
         value=state,
@@ -74,6 +41,12 @@ def _set_oauth_state_cookie(response: RedirectResponse, state: str) -> None:
 
 
 def _verify_oauth_state(state: str | None, oauth_state: str | None) -> None:
+    """Verify the OAuth state and raise an exception if it is invalid.
+
+    Args:
+        state: The state parameter from the OAuth request.
+        oauth_state: The state cookie from the client.
+    """
     if not state or not oauth_state or not secrets.compare_digest(state, oauth_state):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -85,6 +58,16 @@ def _verify_oauth_state(state: str | None, oauth_state: str | None) -> None:
 
 
 def _parse_token_response(data: dict) -> tuple[str, str | None, datetime | None]:
+    """Parse the token response from Forgejo and return the access token, refresh token, and expiration time.
+
+    Args:
+        data: The token response from Forgejo.
+
+    Returns:
+        access_token: The access token.
+        refresh_token: The refresh token.
+        expires_at: The expiration time of the access token.
+    """
     access_token = data.get("access_token")
     if not access_token or not isinstance(access_token, str):
         raise HTTPException(
@@ -102,6 +85,16 @@ def _parse_token_response(data: dict) -> tuple[str, str | None, datetime | None]
 
 
 def _parse_user_response(data: dict) -> tuple[str, str, str | None]:
+    """Parse the user response from Forgejo and return the provider user id, provider username, and email.
+
+    Args:
+        data: The user response from Forgejo.
+
+    Returns:
+        provider_user_id: The provider user id.
+        provider_username: The provider username.
+        email: The email address of the user.
+    """
     provider_user_id = str(data.get("id", "")).strip()
     provider_username = str(data.get("username", "")).strip()
     if not provider_user_id or not provider_username:
@@ -118,6 +111,15 @@ def _parse_user_response(data: dict) -> tuple[str, str, str | None]:
 
 
 def _forgejo_oauth_redirect_uri(request: Request, app_settings: AppSettings) -> str:
+    """Generate the redirect URI for the Forgejo OAuth callback.
+
+    Args:
+        request: The incoming request.
+        app_settings: The application settings.
+
+    Returns:
+        The redirect URI for the Forgejo OAuth callback.
+    """
     base_url = app_settings.firebreak_public_base_url.strip().rstrip("/")
     if base_url:
         return f"{base_url}/auth/callback/forgejo"
@@ -125,8 +127,18 @@ def _forgejo_oauth_redirect_uri(request: Request, app_settings: AppSettings) -> 
 
 
 def _get_oauth_client_secret(app_settings: AppSettings) -> str:
+    """Get the OAuth client secret from the application settings.
+
+    Args:
+        app_settings: The application settings.
+
+    Returns:
+        The OAuth client secret.
+    """
     try:
-        return decrypt_token(get_fernet(), app_settings.forgejo_oauth_client_secret_encrypted)
+        return decrypt_token(
+            get_fernet(), app_settings.forgejo_oauth_client_secret_encrypted
+        )
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -168,20 +180,20 @@ async def callback_forgejo(
     state: str | None = None,
     oauth_state: Annotated[str | None, Cookie()] = None,
 ) -> RedirectResponse:
-    """Handle Forgejo's OAuth callback and create a local app session."""
+    """Handle Forgejo's OAuth callback and creates a new app session."""
 
     _verify_oauth_state(state, oauth_state)
 
     if not code:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Forgejo did not return an authorization code. The user may have denied consent.",
+            detail="Forgejo did not return an authorization code. The user may have denied access.",
         )
 
     client_secret = _get_oauth_client_secret(app_settings)
     redirect_uri = _forgejo_oauth_redirect_uri(request, app_settings)
 
-    token_data = await _forgejo_post(
+    token_data = await forgejo.post(
         app_settings,
         "/login/oauth/access_token",
         {
@@ -194,9 +206,10 @@ async def callback_forgejo(
     )
     access_token, refresh_plain, expires_at = _parse_token_response(token_data)
 
-    user_data = await _forgejo_get(app_settings, "/api/v1/user", access_token)
+    user_data = await forgejo.get(app_settings, "/api/v1/user", access_token)
     provider_user_id, provider_username, email = _parse_user_response(user_data)
 
+    # Find or create the user in the database
     user = await find_or_create_user(
         db,
         app_settings,
@@ -216,7 +229,10 @@ async def callback_forgejo(
     redirect = RedirectResponse("/dashboard", status_code=status.HTTP_302_FOUND)
     redirect.delete_cookie("oauth_state")
 
+    # Create a new session for the user
     await create_session(db, redirect, user.id, secure=request.url.scheme == "https")
+
+    # Redirect to the dashboard
     return redirect
 
 

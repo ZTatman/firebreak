@@ -26,6 +26,12 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 
 ## Documented obstacles
 
+### Shared dependency aliases created circular imports
+**Area:** web/app/deps.py, web/app/auth/session.py, web/app/settings.py
+**Obstacle:** Moving session aliases into deps.py made it import auth/session.py, which already imports get_db from deps.py. Renaming config.py to settings.py also left stale imports.
+**Solution/Workaround:** Keep get_db in deps.py and dependency aliases local to their consuming modules. Update imports to app.settings and import AppSettings directly from app.models.app_settings.
+**Preference:** Keep dependency wiring simple while building the feature; defer shared alias extraction.
+
 ### TypeScript composite builds fail with no output
 **Area:** cli/tsconfig.json, tsconfig.base.json
 **Obstacle:** When `composite: true` is set in tsconfig, TypeScript requires proper project references to build. The CLI package was building but producing no output files, causing "cannot find module" errors.
@@ -123,7 +129,145 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Preference:** A valid token alone is insufficient for repository-access verification.
 
 ### Forgejo PAT could be sent over remote HTTP
-**Area:** cli/src/utils/forgejo-checks.ts, cli/src/commands/config/init.ts
-**Obstacle:** CLI setup and verification accepted remote `http://` Forgejo URLs, allowing the PAT to be sent without transport encryption.
-**Solution/Workaround:** Centralize Forgejo URL validation, require HTTPS for non-local endpoints, and allow HTTP only for the documented `forgejo` service and loopback hosts. Validate again inside authenticated checks before constructing requests.
+**Area:** cli/src/utils/forgejo-checks.ts, cli/src/commands/config/init.ts, web/app/clients/forgejo.py
+**Obstacle:** Accepting remote `http://` Forgejo URLs allowed credentials to be sent without transport encryption.
+**Solution/Workaround:** Require HTTPS for non-local endpoints and allow HTTP only for the documented `forgejo` service and loopback hosts. Validate at each client boundary before sending credentials.
 **Preference:** Reject insecure remote transport instead of adding an acknowledgement flag.
+
+### Tailwind standalone CLI was killed by macOS code signing
+**Area:** web/tailwindcss, web/dev.sh
+**Obstacle:** The downloaded standalone Tailwind binary is ad-hoc ("linker-signed") only. macOS AMFI rejected it with `has no CMS blob` / `Unrecoverable CT signature issue`, and the kernel denied the page at offset `0x4b00000` and sent SIGKILL. `dev.sh` uses `set -euo pipefail`, so the script aborted silently with exit 137 and no error message.
+**Solution/Workaround:** Resolved by migrating the web CSS build to pnpm (`@tailwindcss/cli`), which ships a normally signed binary. If the standalone binary is ever re-downloaded, fix with `xattr -c web/tailwindcss && codesign --force --sign - web/tailwindcss`. Diagnose this class of failure with `/usr/bin/log show --predicate 'eventMessage CONTAINS[c] "tailwind"'`.
+**Preference:** Prefer the pnpm-managed CLI; do not re-add the standalone binary.
+
+### Tailwind watcher can stop on stdin
+**Area:** web/dev.sh, web/package.json (`css:watch` script)
+**Obstacle:** With job control enabled, the background watcher can stop on SIGTTIN when bare `--watch` reads terminal stdin. With closed stdin it instead exits after the first build.
+**Solution/Workaround:** Redirect the background watcher's stdin to `/dev/null` and use `--watch=always`. Keep process-group cleanup in `dev.sh`.
+**Preference:** Keep the watcher independent of terminal input. For an isolated smoke check, run the installed CLI against temporary CSS rather than linking the workspace's `node_modules` into a separate pnpm project.
+
+### pnpm install failed with exit 1 on blocked build scripts
+**Area:** pnpm-workspace.yaml
+**Obstacle:** pnpm 10 does not run dependency lifecycle scripts unless allowlisted, so `@parcel/watcher` (a dep of `@tailwindcss/cli`) was skipped and `pnpm install` exited **1** with `ERR_PNPM_IGNORED_BUILDS`. That would break CI and Docker builds.
+**Solution/Workaround:** Added `allowBuilds: {"@parcel/watcher": false}` to `pnpm-workspace.yaml`. `false` is correct — the prebuilt platform package (`@parcel/watcher-darwin-arm64`) already provides the native binding, so the node-gyp build is unnecessary; watch mode verified working. Note `onlyBuiltDependencies` is deprecated as of pnpm v10.26.0 and is silently ignored.
+**Preference:** Set `allowBuilds` explicitly per dependency rather than `dangerouslyAllowAllBuilds`.
+
+### Killing a pnpm-wrapped watcher orphaned the node process
+**Area:** web/dev.sh
+**Obstacle:** `pnpm run` spawns node as a child, so `$!` captured pnpm's PID rather than the Tailwind process. The `trap "kill $TW_PID"` cleanup killed the wrapper and left the node watcher running, accumulating orphans across dev-server restarts.
+**Solution/Workaround:** Enable job control with `set -m` before backgrounding so the job becomes a process-group leader, then kill the group: `kill -- -$TW_PID`.
+**Preference:** When backgrounding a package-manager wrapper, always kill the process group rather than the wrapper PID.
+
+### Owned repository pagination needs an owner-specific endpoint
+**Area:** web/app/clients/forgejo.py, web/app/routers/repositories.py, web/app/main.py
+**Obstacle:** Forgejo's `/user/repos` handler does not read `type=owner`; filtering accessible repositories after pagination can produce sparse pages and misleading totals.
+**Solution/Workaround:** Use authenticated `/users/{username}/repos` for owned listings and preserve `x-total-count`. Dashboard and JSON listings consume the returned page without filtering it again.
+**Preference:** Filter upstream before paginating; keep the JSON list response shape unchanged. User approved removing redundant consumer-side owner checks because silently dropping results could make page contents disagree with pagination metadata.
+
+### Repository failures must not replace the dashboard
+**Area:** web/app/main.py, web/app/templates/dashboard.html
+**Obstacle:** Fetch failures and token/identity dependencies could abort the whole dashboard, including its no-PAT state.
+**Solution/Workaround:** Resolve repository credentials and identity only when a PAT exists, inside the dashboard's repository error boundary. Render expected 403/502/503 failures inline and hide pagination on error; leave authentication outside that boundary. Use one dashboard page-size constant.
+**Preference:** Keep the dashboard usable without masking unexpected application errors.
+
+### Declarative base lint error remains deferred
+**Area:** web/app/database.py
+**Obstacle:** Existing `Base.type_annotation_map` triggers Ruff RUF012 for an unannotated mutable class attribute.
+**Solution/Workaround:** Deferred outside the repository-table cleanup. Annotate the mapping with `ClassVar` when addressing this lint issue.
+**Preference:** Do not mix unrelated database cleanup into repository UI changes.
+
+### Create-share-link button points to an unfinished route
+**Area:** web/app/templates/dashboard.html, web/app/routers/links.py
+**Obstacle:** The existing button points to `/links/create`, which has no handler; `POST /links/` is still a 501 stub and the public viewer is not built.
+**Solution/Workaround:** Deferred to the share-link implementation. The user intends to write link creation themselves.
+**Preference:** Keep repository-table cleanup separate from implementing the share-link flow.
+
+### Table divider utility has no matching theme token
+**Area:** web/app/templates/dashboard.html, web/app/static/css/input.css
+**Obstacle:** Both dashboard tables use `divide-border-subtle`, but no `--color-border-subtle` token exists. The repository table copied the existing share-links table styling.
+**Solution/Workaround:** Replaced `divide-border-subtle` with the existing semantic `divide-border` utility in both dashboard tables, as approved by the user.
+**Preference:** Reuse the existing border token rather than adding an appearance-specific token.
+
+### Automated tests deferred while learning the feature
+**Area:** web/tests/
+**Obstacle:** The user wants to understand how tests work before adding them to this feature.
+**Solution/Workaround:** Removed the newly added repository tests at the user's request. Defer adding automated tests until the user is ready; use manual verification in the meantime.
+**Preference:** Explain testing before introducing test files; do not add them yet.
+
+### Forgejo page-size caps can hide remaining repositories
+**Area:** web/app/clients/forgejo.py, web/app/main.py
+**Obstacle:** Calculating the next page from the requested limit stops pagination early when Forgejo's configured page-size cap is lower.
+**Solution/Workaround:** Preserve the `next` relation from Forgejo's `Link` header as `RepoPage.has_next_page` and use it directly on the dashboard.
+**Preference:** Use upstream pagination links rather than assuming the requested page size was honored.
+
+### Picker listing endpoints omit pagination metadata
+**Area:** web/app/routers/repositories.py, web/app/templates/snapshot_picker.html
+**Obstacle:** Branch and commit client helpers return plain lists; a short page cannot prove there are no further results because Forgejo may cap page sizes.
+**Solution/Workaround:** The picker-specific HTML route follows repository pagination metadata and walks branch pages until empty. Commit requests stop at an empty page or 30 recent commits. JSON listing responses are unchanged.
+**Preference:** Paginate automatically without guessing from page length or changing existing API consumers.
+
+### Branch refs need URL query encoding
+**Area:** web/app/clients/forgejo.py
+**Obstacle:** Interpolating a branch ref into the Forgejo commits query can corrupt names containing characters such as `&` or `#`.
+**Solution/Workaround:** Build query strings with `httpx.QueryParams` and quote owner and repository path components.
+**Preference:** Encode URL components at the HTTP client boundary.
+
+### Duplicate element IDs silently broke the snapshot picker
+**Area:** web/app/templates/dashboard.html, web/app/static/js/snapshot-picker.js
+**Obstacle:** The selected-snapshot summary cells reused `snapshot-branch` and `snapshot-commit`, colliding with the picker's `<select>` IDs. `getElementById` returned the hidden summary cell, so `closest(".picker-step")` was `null` and the click handler threw before `showModal()` — the dialog never opened and no visible error appeared.
+**Solution/Workaround:** Prefix summary IDs with `snapshot-selected-` and check the rendered template for duplicate IDs.
+**Preference:** Keep picker control IDs and display IDs distinct; treat a dialog that fails to open as a JavaScript error first and check the console.
+
+### Appending picker options can change the selected value
+**Area:** web/app/templates/snapshot_picker.html
+**Obstacle:** A temporary `<select>` wrapper auto-selects its first option before HTMX moves it into the live select, overriding the user's choice.
+**Solution/Workaround:** The old paginated UI appended through an inert `<template>` with a neutral wrapper. The current picker renders complete option sets and no longer appends options.
+**Preference:** Avoid swapping from a temporary `<select>` when appending to a live one.
+
+### Cached snapshot script broke the new dialog markup
+**Area:** web/app/templates/dashboard.html, web/app/static/js/snapshot-picker.js
+**Obstacle:** During the HTMX migration, the browser could reuse the old picker script against the new HTML and fail before opening the dialog.
+**Solution/Workaround:** The script URL was versioned during the migration. The current picker uses native dialog commands and no longer includes a custom script.
+**Preference:** Keep the HTML and its script in sync without requiring users to hard-refresh.
+
+### Forgejo commit listing has no message search
+**Area:** web/app/routers/repositories.py, web/app/templates/snapshot_picker.html
+**Obstacle:** Filtering just the first page misses commits; scanning an entire branch on each search can slow large repositories.
+**Solution/Workaround:** The picker previously filtered up to 100 commits by message or SHA prefix. At the user's request, it now only lists up to 30 recent commits in the dropdown.
+**Preference:** Keep the picker dropdown-only; don't scan the entire commit history.
+
+### Snapshot picker changes shifted the modal frame
+**Area:** web/app/static/css/input.css, web/app/templates/dashboard.html
+**Obstacle:** The dialog only had a maximum height, HTMX loading removed fields from layout, and locking root overflow could remove the page scrollbar.
+**Solution/Workaround:** Use a viewport-capped fixed dialog size, a scrolling body with a stable scrollbar gutter, and a grid overlay for loading. Contain scroll chaining on the dialog and its backdrop rather than changing root overflow.
+**Preference:** Keep the shell and field space stable without JavaScript.
+
+### djLint reports empty native selectedcontent as an error
+**Area:** web/app/templates/snapshot_picker.html
+**Obstacle:** djLint H020 flags the empty element even though the browser fills it from the selected option.
+**Solution/Workaround:** Suppress H020 in the picker fragment and leave its native select markup intact.
+**Preference:** Keep customizable-select styling behind feature queries, with the native picker as the fallback.
+
+### Forgejo owned repository listing requires two PAT scopes
+**Area:** web/app/clients/forgejo.py, web/app/templates/settings.html
+**Obstacle:** Forgejo's `/users/{username}/repos` requires `read:user` and `read:repository`; a PAT with only `read:repository` cannot populate the dashboard or picker.
+**Solution/Workaround:** Name both scopes in setup guidance and the client error for a rejected token.
+**Preference:** Keep the owner-specific listing and its pagination metadata.
+
+### Unqualified branch names can resolve to a tag
+**Area:** web/app/routers/repositories.py, web/app/clients/forgejo.py
+**Obstacle:** Forgejo's commits listing accepts a general Git ref; a tag and branch can have the same name.
+**Solution/Workaround:** Resolve the exact branch with Forgejo's branch endpoint once, then use its tip SHA for every commit page in the picker.
+**Preference:** Leave the JSON commits endpoint's branch/tag/SHA contract unchanged.
+
+### Malformed Forgejo payloads bypassed inline errors
+**Area:** web/app/clients/forgejo.py
+**Obstacle:** Non-JSON responses or invalid JSON shapes raised outside the dashboard/picker's HTTP error boundary. Pydantic v2 also lets a validator's `TypeError` escape validation.
+**Solution/Workaround:** Validate expected JSON shapes in the client, use `ValueError` for field validation, and return a sanitized 502 for malformed data.
+**Preference:** Keep the dashboard and picker usable without displaying upstream response content.
+
+### Failed picker requests can reveal stale selections
+**Area:** web/app/templates/dashboard.html, web/app/templates/snapshot_picker.html
+**Obstacle:** HTMX clears its loading indicator after a failed request without replacing the old branch or commit controls.
+**Solution/Workaround:** Mark the dependent fragment `inert` before sending a request and replace its outer element only when a response swaps. Show an inline error if the old fragment remains after loading.
+**Preference:** Don't allow a stale selection to submit; preserve the dialog's layout during loading and failure.

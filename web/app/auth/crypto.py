@@ -29,10 +29,7 @@ def encrypt_optional(fernet: Fernet | None, raw_token: str | None) -> str | None
     if raw_token is None:
         return None
     if fernet is None:
-        msg = (
-            "Token encryption is not configured. "
-            "Set TOKEN_ENCRYPTION_KEY in your .env file or deployment environment."
-        )
+        msg = "Token encryption is not configured. Set TOKEN_ENCRYPTION_KEY in your .env file or deployment environment."
         raise ValueError(msg)
     return encrypt_token(fernet, raw_token)
 
@@ -51,9 +48,6 @@ def decrypt_optional(fernet: Fernet | None, encrypted_token: str | None) -> str 
     if encrypted_token is None:
         return None
     if fernet is None:
-        msg = (
-            "Token encryption is not configured. "
-            "Set TOKEN_ENCRYPTION_KEY in your .env file or deployment environment."
-        )
+        msg = "Token encryption is not configured. Set TOKEN_ENCRYPTION_KEY in your .env file or deployment environment."
         raise ValueError(msg)
     return decrypt_token(fernet, encrypted_token)

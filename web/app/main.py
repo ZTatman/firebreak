@@ -4,28 +4,32 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import func as sql_func
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
-from sqlalchemy import func as sql_func, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app import models as _models  # noqa: F401 - register ORM tables on metadata
 from app.auth.session import get_current_session, get_optional_session
-from app.config import get_settings
+from app.clients import forgejo
 from app.database import Base
+from app.deps import get_db
 from app.middleware import SetupRequiredMiddleware
 from app.models.app_settings import AppSettings
 from app.models.session import Session as UserBrowserSession
-from app.routers import auth, links, settings, setup
+from app.routers import auth, links, repositories, settings, setup
+from app.settings import get_app_settings, get_settings
 from app.templating import templates
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage database engine lifecycle and load app settings."""
+
     boot_settings = get_settings()
     engine = create_async_engine(
         url=boot_settings.database_url,
@@ -69,14 +73,28 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
+# Initialize app
 app = FastAPI(lifespan=lifespan)
+
+
+# Middleware
 app.add_middleware(SetupRequiredMiddleware)
 
-app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+
+# Static files
+app.mount(
+    "/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static"
+)
+
+
+# Routers
 app.include_router(auth.router)
 app.include_router(links.router)
+app.include_router(repositories.router)
+app.include_router(repositories.picker_router)
 app.include_router(settings.router)
 app.include_router(setup.router)
+
 
 ERROR_TITLES = {
     400: "Bad Request",
@@ -88,9 +106,13 @@ ERROR_TITLES = {
 }
 
 
+# Http exception handler
 @app.exception_handler(StarletteHTTPException)
-async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> Response:
+async def http_exception_handler(
+    request: Request, exc: StarletteHTTPException
+) -> Response:
     """Render a styled error page for browser requests, JSON for API clients."""
+
     accept = request.headers.get("accept", "")
     if "text/html" in accept:
         return templates.TemplateResponse(
@@ -108,7 +130,8 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
 
 @app.get("/", response_class=HTMLResponse)
 async def root(
-    request: Request, sess: Annotated[UserBrowserSession | None, Depends(get_optional_session)]
+    request: Request,
+    sess: Annotated[UserBrowserSession | None, Depends(get_optional_session)],
 ) -> Response:
     return templates.TemplateResponse(
         request,
@@ -117,15 +140,51 @@ async def root(
     )
 
 
+REPOS_PER_PAGE = 30
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(
-    request: Request, sess: Annotated[UserBrowserSession, Depends(get_current_session)]
+    request: Request,
+    sess: Annotated[UserBrowserSession, Depends(get_current_session)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    app_settings: Annotated[AppSettings, Depends(get_app_settings)],
+    page: Annotated[int, Query(ge=1)] = 1,
 ) -> Response:
+    repos = []
+    total_count = 0
+    has_next_page = False
+    repo_error = None
+    if sess.user.has_pat:
+        try:
+            access_token = await repositories.get_forgejo_token(sess)
+            owner = await repositories.get_forgejo_owner(sess, db)
+            repo_page = await forgejo.get_repos(
+                app_settings,
+                access_token,
+                limit=REPOS_PER_PAGE,
+                page=page,
+                owner=owner,
+            )
+        except HTTPException as exc:
+            if exc.status_code not in {403, 502, 503}:
+                raise
+            repo_error = exc.detail
+        else:
+            repos = repo_page.repos
+            total_count = repo_page.total_count or 0
+            has_next_page = repo_page.has_next_page
     return templates.TemplateResponse(
         request,
         "dashboard.html",
         {
             "user": sess.user,
             "pat_registered": sess.user.has_pat,
+            "repos": repos,
+            "repo_error": repo_error,
+            "repo_page": page,
+            "repo_total_count": total_count,
+            "repo_has_previous_page": page > 1,
+            "repo_has_next_page": has_next_page,
         },
     )
