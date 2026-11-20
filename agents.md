@@ -199,3 +199,51 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Obstacle:** Calculating the next page from the requested limit stops pagination early when Forgejo's configured page-size cap is lower.
 **Solution/Workaround:** Preserve the `next` relation from Forgejo's `Link` header as `RepoPage.has_next_page` and use it directly on the dashboard.
 **Preference:** Use upstream pagination links rather than assuming the requested page size was honored.
+
+### Picker listing endpoints omit pagination metadata
+**Area:** web/app/routers/repositories.py, web/app/templates/snapshot_picker.html
+**Obstacle:** Branch and commit client helpers return plain lists; a short page cannot prove there are no further results because Forgejo may cap page sizes.
+**Solution/Workaround:** The picker-specific HTML route follows repository pagination metadata and walks branch pages until empty. Commit requests stop at an empty page or 30 recent commits. JSON listing responses are unchanged.
+**Preference:** Paginate automatically without guessing from page length or changing existing API consumers.
+
+### Branch refs need URL query encoding
+**Area:** web/app/clients/forgejo.py
+**Obstacle:** Interpolating a branch ref into the Forgejo commits query can corrupt names containing characters such as `&` or `#`.
+**Solution/Workaround:** Build query strings with `httpx.QueryParams` and quote owner and repository path components.
+**Preference:** Encode URL components at the HTTP client boundary.
+
+### Duplicate element IDs silently broke the snapshot picker
+**Area:** web/app/templates/dashboard.html, web/app/static/js/snapshot-picker.js
+**Obstacle:** The selected-snapshot summary cells reused `snapshot-branch` and `snapshot-commit`, colliding with the picker's `<select>` IDs. `getElementById` returned the hidden summary cell, so `closest(".picker-step")` was `null` and the click handler threw before `showModal()` — the dialog never opened and no visible error appeared.
+**Solution/Workaround:** Prefix summary IDs with `snapshot-selected-` and check the rendered template for duplicate IDs.
+**Preference:** Keep picker control IDs and display IDs distinct; treat a dialog that fails to open as a JavaScript error first and check the console.
+
+### Appending picker options can change the selected value
+**Area:** web/app/templates/snapshot_picker.html
+**Obstacle:** A temporary `<select>` wrapper auto-selects its first option before HTMX moves it into the live select, overriding the user's choice.
+**Solution/Workaround:** The old paginated UI appended through an inert `<template>` with a neutral wrapper. The current picker renders complete option sets and no longer appends options.
+**Preference:** Avoid swapping from a temporary `<select>` when appending to a live one.
+
+### Cached snapshot script broke the new dialog markup
+**Area:** web/app/templates/dashboard.html, web/app/static/js/snapshot-picker.js
+**Obstacle:** During the HTMX migration, the browser could reuse the old picker script against the new HTML and fail before opening the dialog.
+**Solution/Workaround:** The script URL was versioned during the migration. The current picker uses native dialog commands and no longer includes a custom script.
+**Preference:** Keep the HTML and its script in sync without requiring users to hard-refresh.
+
+### Forgejo commit listing has no message search
+**Area:** web/app/routers/repositories.py, web/app/templates/snapshot_picker.html
+**Obstacle:** Filtering just the first page misses commits; scanning an entire branch on each search can slow large repositories.
+**Solution/Workaround:** The picker previously filtered up to 100 commits by message or SHA prefix. At the user's request, it now only lists up to 30 recent commits in the dropdown.
+**Preference:** Keep the picker dropdown-only; don't scan the entire commit history.
+
+### Snapshot picker changes shifted the modal frame
+**Area:** web/app/static/css/input.css, web/app/templates/dashboard.html
+**Obstacle:** The dialog only had a maximum height, HTMX loading removed fields from layout, and locking root overflow could remove the page scrollbar.
+**Solution/Workaround:** Use a viewport-capped fixed dialog size, a scrolling body with a stable scrollbar gutter, and a grid overlay for loading. Contain scroll chaining on the dialog and its backdrop rather than changing root overflow.
+**Preference:** Keep the shell and field space stable without JavaScript.
+
+### djLint reports empty native selectedcontent as an error
+**Area:** web/app/templates/snapshot_picker.html
+**Obstacle:** djLint H020 flags the empty element even though the browser fills it from the selected option.
+**Solution/Workaround:** Suppress H020 in the picker fragment and leave its native select markup intact.
+**Preference:** Keep customizable-select styling behind feature queries, with the native picker as the fallback.

@@ -8,12 +8,60 @@
         <p class=" text-2xl text-muted-foreground">{{ user.display_name or user.email }}.</p>
       </div>
       {% if pat_registered %}
-        <a href="/links/create" class="btn btn-primary w-fit">Create share link</a>
+        <button type="button"
+                id="open-snapshot-picker"
+                class="btn btn-primary w-fit"
+                commandfor="snapshot-picker"
+                command="show-modal"
+                hx-get="/links/snapshot-picker/repository"
+                hx-target="#snapshot-picker-body"
+                hx-swap="innerHTML"
+                hx-indicator="#snapshot-picker-scope"
+                hx-sync="#snapshot-picker:replace">Select snapshot</button>
       {% else %}
         <span class="btn btn-primary w-fit opacity-50 pointer-events-none"
-              aria-disabled="true">Create share link</span>
+              aria-disabled="true">Select snapshot</span>
       {% endif %}
     </section>
+    {% if pat_registered %}
+      {% include "snapshot_preview.html" %}
+      <dialog id="snapshot-picker"
+              class="picker-dialog"
+              aria-labelledby="snapshot-title"
+              aria-describedby="snapshot-description">
+        <div class="picker-layout">
+          <header class="picker-header">
+            <div>
+              <h2 id="snapshot-title" class="picker-title">Select a snapshot</h2>
+              <p id="snapshot-description" class="picker-description">
+                Choose a repository, then a branch and commit. Nothing is published until you create a link.
+              </p>
+            </div>
+            <button type="button"
+                    class="picker-close"
+                    aria-label="Close dialog"
+                    commandfor="snapshot-picker"
+                    command="close">
+              <svg width="16"
+                   height="16"
+                   viewBox="0 0 16 16"
+                   fill="none"
+                   stroke="currentColor"
+                   stroke-width="1.5"
+                   aria-hidden="true">
+                <path d="M4 4l8 8M12 4l-8 8" stroke-linecap="round" />
+              </svg>
+            </button>
+          </header>
+          <div id="snapshot-picker-scope" class="picker-steps picker-load-scope">
+            <p class="picker-status picker-loading" role="status">Loading selection…</p>
+            <div id="snapshot-picker-body" class="picker-loaded">
+              <p class="picker-status" role="status">Could not load repositories. Close the picker and try again.</p>
+            </div>
+          </div>
+        </div>
+      </dialog>
+    {% endif %}
     <section class="grid gap-4 md:grid-cols-3">
       <div class="p-4 card">
         <p class="section-header-subtle">Active links</p>

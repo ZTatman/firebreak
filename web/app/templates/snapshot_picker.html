@@ -1,0 +1,125 @@
+{# The browser fills selectedcontent when a native select option is chosen. #}
+<!-- djlint:off H020 -->
+{% block picker_steps %}
+  <div class="picker-step">
+    <span class="picker-step-index" aria-hidden="true">1</span>
+    <div>
+      <label for="snapshot-repository" class="picker-step-label">Repository</label>
+      <select id="snapshot-repository"
+              class="picker-select"
+              name="repo"
+              required
+              {% if not options %}disabled{% endif %}
+              hx-get="/links/snapshot-picker/branch"
+              hx-trigger="change"
+              hx-target="#snapshot-branch-content"
+              hx-swap="innerHTML"
+              hx-indicator="#snapshot-branch-scope"
+              hx-sync="#snapshot-picker:replace">
+        <button type="button"><selectedcontent></selectedcontent></button>
+        <option value="">Choose a repository</option>
+        {% for value, label in options %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+      </select>
+      <p class="picker-status" role="status" {% if error %}data-state="error"{% endif %}>{{ message }}</p>
+    </div>
+  </div>
+  <div id="snapshot-branch-scope" class="picker-load-scope">
+    <p class="picker-status picker-loading" role="status">Loading branches…</p>
+    <div id="snapshot-branch-content" class="picker-loaded">
+      {% block branch_steps %}
+        <div class="picker-step">
+          <span class="picker-step-index" aria-hidden="true">2</span>
+          <div>
+            <label for="snapshot-branch" class="picker-step-label">Branch</label>
+            <select id="snapshot-branch"
+                    class="picker-select"
+                    name="ref"
+                    required
+                    {% if step != "branch" or not options %}disabled{% endif %}
+                    hx-get="/links/snapshot-picker/commit"
+                    hx-trigger="change"
+                    hx-include="#snapshot-repository"
+                    hx-target="#snapshot-commit-content"
+                    hx-swap="innerHTML"
+                    hx-indicator="#snapshot-commit-scope"
+                    hx-sync="#snapshot-picker:replace">
+              <button type="button"><selectedcontent></selectedcontent></button>
+              <option value="">Choose a branch</option>
+              {% if step == "branch" %}
+                {% for value, label in options %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+              {% endif %}
+            </select>
+            <p class="picker-status"
+               role="status"
+               {% if step == "branch" and error %}data-state="error"{% endif %}>
+              {% if step == "branch" and repo %}
+                {{ message }}
+                {% if error %}
+                  <button type="button"
+                          class="btn btn-xs btn-secondary"
+                          hx-get="/links/snapshot-picker/branch"
+                          hx-include="#snapshot-repository"
+                          hx-target="#snapshot-branch-content"
+                          hx-swap="innerHTML"
+                          hx-indicator="#snapshot-branch-scope"
+                          hx-sync="#snapshot-picker:replace">Retry</button>
+                {% endif %}
+              {% else %}
+                Choose a repository first.
+              {% endif %}
+            </p>
+          </div>
+        </div>
+        <div id="snapshot-commit-scope" class="picker-load-scope">
+          <p class="picker-status picker-loading" role="status">Loading commits…</p>
+          <div id="snapshot-commit-content" class="picker-loaded">
+            {% block commit_step %}
+              <div class="picker-step">
+                <span class="picker-step-index" aria-hidden="true">3</span>
+                <div>
+                  <label for="snapshot-commit" class="picker-step-label">Commit</label>
+                  {% if step == "commit" and repo and ref %}
+                    <form hx-get="/links/snapshot-picker/preview"
+                          hx-target="#snapshot-picker-body"
+                          hx-swap="innerHTML"
+                          hx-indicator="#snapshot-picker-scope"
+                          hx-sync="#snapshot-picker:replace">
+                      <input type="hidden" name="repo" value="{{ repo }}" />
+                      <input type="hidden" name="ref" value="{{ ref }}" />
+                      <select id="snapshot-commit"
+                              class="picker-select"
+                              name="commit"
+                              required
+                              {% if not options %}disabled{% endif %}>
+                        <button type="button"><selectedcontent></selectedcontent></button>
+                        <option value="">Choose a commit</option>
+                        {% for value, label in options %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                      </select>
+                      <p class="picker-status" role="status" {% if error %}data-state="error"{% endif %}>{{ message }}</p>
+                      <div class="picker-actions">
+                        <button type="button"
+                                class="btn btn-sm btn-secondary"
+                                commandfor="snapshot-picker"
+                                command="close">Cancel</button>
+                        <button type="submit"
+                                class="btn btn-sm btn-primary"
+                                {% if not options %}disabled{% endif %}>Select snapshot</button>
+                      </div>
+                    </form>
+                  {% else %}
+                    <select id="snapshot-commit" class="picker-select" disabled>
+                      <button type="button"><selectedcontent></selectedcontent></button>
+                      <option value="">Choose a commit</option>
+                    </select>
+                    <p class="picker-status" role="status">Choose a branch first.</p>
+                  {% endif %}
+                </div>
+              </div>
+            {% endblock %}
+          </div>
+        </div>
+      {% endblock %}
+    </div>
+  </div>
+{% endblock %}
+<!-- djlint:on -->

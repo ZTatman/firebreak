@@ -1,6 +1,8 @@
-from typing import Annotated
+from itertools import count
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +14,7 @@ from app.models.app_settings import AppSettings
 from app.models.session import Session as UserBrowserSession
 from app.models.user import LinkedIdentity
 from app.settings import get_app_settings, get_fernet
+from app.templating import templates
 
 router = APIRouter(prefix="/links", tags=["repositories"])
 
@@ -122,3 +125,139 @@ async def get_repository_commits(
         app_settings, access_token, owner, repo, ref=ref, limit=limit, page=page
     )
     return commits
+
+
+RECENT_COMMITS = 30
+PICKER_PAGE_SIZE = 50
+
+
+@router.get(
+    "/snapshot-picker/preview", response_class=HTMLResponse, include_in_schema=False
+)
+async def preview_snapshot(
+    request: Request,
+    _session: Annotated[UserBrowserSession, Depends(get_current_session)],
+    repo: Annotated[str, Query(max_length=255)] = "",
+    ref: Annotated[str, Query(max_length=1024)] = "",
+    commit: Annotated[str, Query(pattern=r"^(?:[a-f0-9]{40}|[a-f0-9]{64})?$")] = "",
+) -> Response:
+    """Render a display-only preview, or clear it when no snapshot is supplied."""
+    confirmed = bool(repo and ref and commit)
+    return templates.TemplateResponse(
+        request,
+        "snapshot_preview.html",
+        {"repo": repo, "ref": ref, "commit": commit, "confirmed": confirmed},
+        headers={"Cache-Control": "no-store"},
+        block_name="preview_confirmation" if confirmed else "selected_snapshot",
+    )
+
+
+@router.get(
+    "/snapshot-picker/{step}", response_class=HTMLResponse, include_in_schema=False
+)
+async def get_snapshot_picker_step(
+    request: Request,
+    step: Literal["repository", "branch", "commit"],
+    app_settings: Annotated[AppSettings, Depends(get_app_settings)],
+    session: Annotated[UserBrowserSession, Depends(get_current_session)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    repo: Annotated[str, Query(max_length=255)] = "",
+    ref: Annotated[str, Query(max_length=1024)] = "",
+) -> Response:
+    """Load dependent picker options without changing the JSON listing API."""
+    if step != "repository" and (repo in {".", ".."} or "/" in repo or "\\" in repo):
+        raise HTTPException(status_code=400, detail="Invalid repository name.")
+
+    options: list[tuple[str, str]] = []
+    error = False
+    message = ""
+    try:
+        if step == "repository" or (repo and (step == "branch" or ref)):
+            access_token = await get_forgejo_token(session)
+            owner = await get_forgejo_owner(session, db)
+            options = await _snapshot_options(
+                step, app_settings, access_token, owner, repo, ref
+            )
+            if not options:
+                message = {
+                    "repository": "No repositories found.",
+                    "branch": "No branches found.",
+                    "commit": "No commits found.",
+                }[step]
+    except HTTPException as exc:
+        if exc.status_code not in {403, 502, 503}:
+            raise
+        error = True
+        message = str(exc.detail)
+
+    return templates.TemplateResponse(
+        request,
+        "snapshot_picker.html",
+        {
+            "step": step,
+            "options": options,
+            "message": message,
+            "error": error,
+            "repo": repo,
+            "ref": ref,
+        },
+        headers={"Cache-Control": "no-store"},
+        block_name={
+            "repository": "picker_steps",
+            "branch": "branch_steps",
+            "commit": "commit_step",
+        }[step],
+    )
+
+
+async def _snapshot_options(
+    step: Literal["repository", "branch", "commit"],
+    app_settings: AppSettings,
+    access_token: str,
+    owner: str,
+    repo: str,
+    ref: str,
+) -> list[tuple[str, str]]:
+    options: list[tuple[str, str]] = []
+    for page in count(1):
+        if step == "repository":
+            result = await forgejo.get_repos(
+                app_settings,
+                access_token,
+                owner=owner,
+                page=page,
+                limit=PICKER_PAGE_SIZE,
+            )
+            options.extend((item.repo_name, item.repo_name) for item in result.repos)
+            if not result.has_next_page or not result.repos:
+                break
+        elif step == "branch":
+            branches = await forgejo.get_branches(
+                app_settings,
+                access_token,
+                owner,
+                repo,
+                page=page,
+                limit=PICKER_PAGE_SIZE,
+            )
+            if not branches:
+                break
+            options.extend((item.name, item.name) for item in branches)
+        else:
+            commits = await forgejo.get_commits(
+                app_settings,
+                access_token,
+                owner,
+                repo,
+                ref=ref,
+                page=page,
+                limit=RECENT_COMMITS,
+            )
+            if not commits:
+                break
+            for item in commits[: RECENT_COMMITS - len(options)]:
+                subject = item.message.partition("\n")[0]
+                options.append((item.id, f"{item.id[:7]} — {subject}"))
+            if len(options) == RECENT_COMMITS:
+                break
+    return options
