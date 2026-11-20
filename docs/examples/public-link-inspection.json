@@ -1,0 +1,103 @@
+{
+  "repositories_response": {
+    "repositories": [
+      {
+        "owner": "zach",
+        "name": "example",
+        "full_name": "zach/example",
+        "default_branch": "main",
+        "private": true
+      }
+    ],
+    "page": 1,
+    "limit": 30,
+    "next_page": null,
+    "inspection": {
+      "forgejo": {
+        "authenticated_user": {
+          "id": 17,
+          "login": "zach",
+          "email": "zach@example.test",
+          "is_admin": false
+        },
+        "repositories": [
+          {
+            "id": 91,
+            "owner": {
+              "id": 17,
+              "login": "zach",
+              "email": "zach@example.test",
+              "is_admin": false
+            },
+            "name": "example",
+            "full_name": "zach/example",
+            "default_branch": "main",
+            "private": true,
+            "permissions": {"pull": true, "admin": true},
+            "description": "Preserve this unmodeled upstream field"
+          }
+        ]
+      }
+    }
+  },
+  "create_response": {
+    "created_grant": {
+      "id": "603a1abd-f9ae-4052-a070-bea1a6f0454b",
+      "user_id": "4b57d156-af94-4592-b507-a82a91a7ab5f",
+      "repo_owner": "zach",
+      "repo_name": "example",
+      "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "grant_type": "public",
+      "created_at": "2026-09-04T22:26:35Z",
+      "expires_at": "2026-09-11T22:26:35Z",
+      "revoked_at": null,
+      "recipient_email": null,
+      "token_hash": "[redacted]"
+    },
+    "share_url": "https://share.example.test/s/[returned-once]",
+    "viewer_available": false,
+    "inspection": {
+      "request": {
+        "repo_owner": "zach",
+        "repo_name": "example",
+        "branch": "main",
+        "expires_at": "2026-09-11T22:26:35Z",
+        "link_type": "public"
+      },
+      "forgejo": {
+        "authenticated_user": {
+          "id": 17,
+          "login": "zach",
+          "email": "zach@example.test",
+          "is_admin": false
+        },
+        "repository": {
+          "id": 91,
+          "owner": {
+            "id": 17,
+            "login": "zach",
+            "email": "zach@example.test",
+            "is_admin": false
+          },
+          "name": "example",
+          "full_name": "zach/example",
+          "default_branch": "main",
+          "private": true,
+          "permissions": {"pull": true, "admin": true},
+          "description": "Preserve this unmodeled upstream field"
+        },
+        "branch": {
+          "name": "main",
+          "commit": {
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "message": "Example commit"
+          }
+        }
+      },
+      "ownership": {
+        "allowed": true,
+        "reason": "repository owner matches authenticated Forgejo user"
+      }
+    }
+  }
+}

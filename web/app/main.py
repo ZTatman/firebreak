@@ -5,12 +5,15 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import func as sql_func
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
-from sqlalchemy import func as sql_func, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app import models as _models  # noqa: F401 - register ORM tables on metadata
 from app.auth.session import get_current_session, get_optional_session
@@ -92,7 +95,7 @@ ERROR_TITLES = {
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> Response:
     """Render a styled error page for browser requests, JSON for API clients."""
     accept = request.headers.get("accept", "")
-    if "text/html" in accept:
+    if "text/html" in accept and not request.url.path.startswith("/links/"):
         return templates.TemplateResponse(
             request,
             "error.html",
@@ -104,6 +107,14 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
             status_code=exc.status_code,
         )
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> Response:
+    if request.url.path.startswith("/links/"):
+        errors = [{"loc": e["loc"], "msg": e["msg"], "type": e["type"]} for e in exc.errors()]
+        return JSONResponse({"detail": errors}, status_code=422)
+    return await request_validation_exception_handler(request, exc)
 
 
 @app.get("/", response_class=HTMLResponse)

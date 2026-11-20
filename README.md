@@ -76,7 +76,9 @@ Open `http://localhost:8000` in your browser. On first boot, Firebreak redirects
 
 ### 4. Sign In and Register Your Token
 
-After setup, sign in with your Forgejo account via OAuth. On first login, Firebreak prompts you to register a `read:repository`-scoped Personal Access Token (PAT) to enable share link viewing.
+After setup, sign in with your Forgejo account via OAuth. Register a Personal Access Token (PAT) for the same account with `read:user` and `read:repository` scopes in Settings to enable repository inspection and public grant creation. The code viewer is not implemented yet.
+
+See [Inspect repository and grant JSON](docs/public-link-inspection.md) for the authenticated API workflow and example responses.
 
 ### 5. Alternative Deployments
 
@@ -97,9 +99,10 @@ Firebreak should not assume a VPS-only environment. The requirement is an existi
 - [x] `firebreak config verify --diagnostic` — comprehensive diagnostics
 - [x] `firebreak config view` — show current config
 - [x] Forgejo OAuth authentication
-- [ ] Repo ownership verification
+- [x] Personal repository ownership verification
 - [ ] Private link creation (email-verified)
-- [ ] Public link creation (time-expired)
+- [x] Public grant creation (API; pins a commit and records expiration)
+- [ ] Public link viewing with expiration/revocation enforcement
 - [ ] Web-based code viewer
 - [x] User dashboard
 - [ ] SMTP configuration UI

@@ -13,8 +13,9 @@
     <div id="forgejo-access-token">
       <h2 class="text-base font-semibold">Forgejo access token</h2>
       <p class="mt-2 text-sm text-muted-foreground">
-        A <code class="rounded-sm bg-secondary px-1.5 py-0.5 text-foreground">read:repository</code>-scoped
-        Personal Access Token is required for share link viewing.
+        A token with <code class="rounded-sm bg-secondary px-1.5 py-0.5 text-foreground">read:user</code> and
+        <code class="rounded-sm bg-secondary px-1.5 py-0.5 text-foreground">read:repository</code> scopes is required.
+        Use a Personal Access Token from the same Forgejo account you signed in with.
       </p>
       {% if pat_registered %}
         <div class="mt-4 card">

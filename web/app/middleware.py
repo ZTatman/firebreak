@@ -1,6 +1,6 @@
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import RedirectResponse, Response
+from starlette.responses import JSONResponse, RedirectResponse, Response
 
 
 class SetupRequiredMiddleware(BaseHTTPMiddleware):
@@ -12,10 +12,19 @@ class SetupRequiredMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         if request.app.state.app_settings is None:
+            if path.startswith("/links/"):
+                return JSONResponse(
+                    {"detail": {"stage": "configuration", "message": "Setup required."}},
+                    status_code=503,
+                    headers={"Cache-Control": "no-store"},
+                )
             if request.headers.get("HX-Request"):
                 response = Response(status_code=200)
                 response.headers["HX-Redirect"] = "/setup"
                 return response
             return RedirectResponse("/setup", status_code=302)
 
-        return await call_next(request)
+        response = await call_next(request)
+        if path.startswith("/links/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response

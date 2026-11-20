@@ -103,7 +103,7 @@ def _parse_token_response(data: dict) -> tuple[str, str | None, datetime | None]
 
 def _parse_user_response(data: dict) -> tuple[str, str, str | None]:
     provider_user_id = str(data.get("id", "")).strip()
-    provider_username = str(data.get("username", "")).strip()
+    provider_username = str(data.get("login") or data.get("username", "")).strip()
     if not provider_user_id or not provider_username:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

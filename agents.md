@@ -123,7 +123,19 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Preference:** A valid token alone is insufficient for repository-access verification.
 
 ### Forgejo PAT could be sent over remote HTTP
-**Area:** cli/src/utils/forgejo-checks.ts, cli/src/commands/config/init.ts
+**Area:** cli/src/utils/forgejo-checks.ts, cli/src/commands/config/init.ts, web/app/services/forgejo.py
 **Obstacle:** CLI setup and verification accepted remote `http://` Forgejo URLs, allowing the PAT to be sent without transport encryption.
-**Solution/Workaround:** Centralize Forgejo URL validation, require HTTPS for non-local endpoints, and allow HTTP only for the documented `forgejo` service and loopback hosts. Validate again inside authenticated checks before constructing requests.
+**Solution/Workaround:** Centralize Forgejo URL validation, require HTTPS for non-local endpoints, and allow HTTP only for the documented `forgejo` service and loopback hosts. Validate again inside authenticated checks before constructing requests. The web inspection client follows the same transport rule and disables redirects.
 **Preference:** Reject insecure remote transport instead of adding an acknowledgement flag.
+
+### Forgejo identity and branch JSON field names
+**Area:** web/app/routers/auth.py, web/app/routers/links.py
+**Obstacle:** Forgejo's documented user response exposes `login`, not `username`, and a branch response exposes its immutable SHA at `commit.id`. Looking up the wrong fields prevents sign-in or commit pinning.
+**Solution/Workaround:** Parse `login` for OAuth (retaining the old `username` fallback), compare PAT and OAuth user IDs, and validate the SHA from `branch.commit.id`. Require `read:user` plus `read:repository` PAT scopes.
+**Preference:** Use immutable IDs for personal ownership; collaborator/admin permissions never authorize sharing.
+
+### JSON inspection and browser error pages
+**Area:** web/app/main.py, web/app/middleware.py, web/app/routers/links.py
+**Obstacle:** Browser requests normally receive HTML errors or setup redirects; inspection routes need consistent JSON, and default validation errors echo rejected values.
+**Solution/Workaround:** Return JSON for `/links/` errors and setup failures, omit validation input values, redact credentials from optional upstream inspection data, and set `Cache-Control: no-store`. Accept only JSON bodies for grant creation.
+**Preference:** Keep inspection behind the existing owner session; never persist upstream payloads or return stored token hashes.
