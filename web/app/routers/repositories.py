@@ -17,6 +17,7 @@ from app.settings import get_app_settings, get_fernet
 from app.templating import templates
 
 router = APIRouter(prefix="/links", tags=["repositories"])
+picker_router = APIRouter(prefix="/dashboard/snapshot-picker", include_in_schema=False)
 
 
 async def get_forgejo_token(
@@ -131,9 +132,7 @@ RECENT_COMMITS = 30
 PICKER_PAGE_SIZE = 50
 
 
-@router.get(
-    "/snapshot-picker/preview", response_class=HTMLResponse, include_in_schema=False
-)
+@picker_router.get("/preview", response_class=HTMLResponse)
 async def preview_snapshot(
     request: Request,
     _session: Annotated[UserBrowserSession, Depends(get_current_session)],
@@ -152,9 +151,7 @@ async def preview_snapshot(
     )
 
 
-@router.get(
-    "/snapshot-picker/{step}", response_class=HTMLResponse, include_in_schema=False
-)
+@picker_router.get("/{step}", response_class=HTMLResponse)
 async def get_snapshot_picker_step(
     request: Request,
     step: Literal["repository", "branch", "commit"],

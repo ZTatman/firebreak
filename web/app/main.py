@@ -91,6 +91,7 @@ app.mount(
 app.include_router(auth.router)
 app.include_router(links.router)
 app.include_router(repositories.router)
+app.include_router(repositories.picker_router)
 app.include_router(settings.router)
 app.include_router(setup.router)
 

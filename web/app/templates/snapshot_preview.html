@@ -12,7 +12,7 @@
           </div>
           <button type="button"
                   class="btn btn-xs btn-secondary"
-                  hx-get="/links/snapshot-picker/preview"
+                  hx-get="{{ url_for('preview_snapshot').path }}"
                   hx-target="#selected-snapshot"
                   hx-swap="outerHTML">Clear</button>
         </div>

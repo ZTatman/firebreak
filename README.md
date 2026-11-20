@@ -76,7 +76,9 @@ Open `http://localhost:8000` in your browser. On first boot, Firebreak redirects
 
 ### 4. Sign In and Register Your Token
 
-After setup, sign in with your Forgejo account via OAuth. On first login, Firebreak prompts you to register a `read:repository`-scoped Personal Access Token (PAT) to enable share link viewing.
+After setup, sign in with your Forgejo account via OAuth. On first login, Firebreak prompts you to register a `read:repository`-scoped personal access token (PAT) so you can browse your repositories and preview snapshots.
+
+See the [Firebreak glossary](docs/glossary.md) for the difference between snapshots, share links, and grants.
 
 ### 5. Alternative Deployments
 
