@@ -158,7 +158,8 @@ async def get_branches(
 
     branches = await get(
         app_settings,
-        f"/api/v1/repos/{owner}/{repo}/branches?limit={limit}&page={page}",
+        f"/api/v1/repos/{quote(owner, safe='')}/{quote(repo, safe='')}/branches?"
+        f"{httpx.QueryParams({'limit': limit, 'page': page})}",
         access_token,
     )
     if not branches:
@@ -191,7 +192,8 @@ async def get_commits(
     """
     commits = await get(
         app_settings,
-        f"/api/v1/repos/{owner}/{repo}/commits?sha={ref}&limit={limit}&page={page}",
+        f"/api/v1/repos/{quote(owner, safe='')}/{quote(repo, safe='')}/commits?"
+        f"{httpx.QueryParams({'sha': ref, 'limit': limit, 'page': page})}",
         access_token,
     )
     if not commits:
