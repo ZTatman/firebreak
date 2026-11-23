@@ -289,3 +289,9 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Obstacle:** HTMX fires request events on the element that sent the request, not on `hx-target`. The Next form lives in the picker body, so a listener on `#snapshot-picker-review` never saw a failed review load, and the dialog showed no error.
 **Solution/Workaround:** Listen for `htmx:responseError` and `htmx:sendError` on the dialog and filter by `detail.target`. Show the create form's error if present, otherwise the separate review-load error.
 **Preference:** Filter dialog-level listeners by target rather than attaching listeners to swap targets.
+
+### JSON link creation bypassed the expiry options
+**Area:** web/app/routers/links.py
+**Obstacle:** The dashboard form only offers 1, 7, or 30 days, but `POST /links/` accepted any future `expires_at`, up to year 9999. An extreme offset such as `9999-12-31T23:59:59-14:00` also passed validation and crashed with `OverflowError` when saved.
+**Solution/Workaround:** `_create_public_link` rejects expirations more than `_MAX_LINK_LIFETIME` (30 days) ahead, before any UTC conversion.
+**Preference:** Enforce link policy in the shared creation function so every entry point gets it.

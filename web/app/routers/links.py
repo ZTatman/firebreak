@@ -29,6 +29,8 @@ router = APIRouter(prefix="/links", tags=["links"])
 _REPO_NAME = r"^[^/\\]+$"
 _COMMIT_SHA = r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
 _NO_STORE = {"Cache-Control": "no-store"}
+# Public links must expire; matches the longest option in the dashboard form.
+_MAX_LINK_LIFETIME = timedelta(days=30)
 
 
 class CreateLinkRequest(BaseModel):
@@ -154,8 +156,15 @@ async def _create_public_link(
 ) -> CreateLinkResponse:
     if link.repo_name in {".", ".."}:
         raise HTTPException(status_code=400, detail="Invalid repository name.")
-    if link.expires_at <= datetime.now(UTC):
+    now = datetime.now(UTC)
+    if link.expires_at <= now:
         raise HTTPException(status_code=400, detail="Choose a future expiration.")
+    # Checked before any UTC conversion, so out-of-range timestamps are rejected
+    # here rather than overflowing when the row is saved.
+    if link.expires_at > now + _MAX_LINK_LIFETIME:
+        raise HTTPException(
+            status_code=400, detail="Choose an expiration within 30 days."
+        )
 
     try:
         base_url = httpx.URL(app_settings.firebreak_public_base_url.strip())
