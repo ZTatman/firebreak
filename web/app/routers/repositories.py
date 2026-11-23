@@ -11,6 +11,7 @@ from app.auth.session import get_current_session, share_link_csrf_token
 from app.clients import forgejo
 from app.deps import get_db
 from app.models.app_settings import AppSettings
+from app.models.grant import DEFAULT_LINK_LIFETIME_DAYS, LINK_LIFETIME_DAYS
 from app.models.session import Session as UserBrowserSession
 from app.models.user import LinkedIdentity
 from app.settings import get_app_settings, get_fernet
@@ -144,7 +145,7 @@ async def preview_snapshot(
     session: Annotated[UserBrowserSession, Depends(get_current_session)],
     repo: Annotated[str, Query(min_length=1, max_length=255)],
     ref: Annotated[str, Query(min_length=1, max_length=1024)],
-    commit: Annotated[str, Query(pattern=r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$")],
+    commit: Annotated[str, Query(pattern=forgejo.COMMIT_SHA)],
 ) -> Response:
     """Render the dialog's review step without creating a share link."""
     return templates.TemplateResponse(
@@ -155,6 +156,8 @@ async def preview_snapshot(
             "ref": ref,
             "commit": commit,
             "csrf_token": share_link_csrf_token(session),
+            "lifetime_days": LINK_LIFETIME_DAYS,
+            "expires_in": DEFAULT_LINK_LIFETIME_DAYS,
         },
         headers={"Cache-Control": "no-store"},
     )

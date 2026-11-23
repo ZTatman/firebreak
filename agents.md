@@ -293,5 +293,5 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 ### JSON link creation bypassed the expiry options
 **Area:** web/app/routers/links.py
 **Obstacle:** The dashboard form only offers 1, 7, or 30 days, but `POST /links/` accepted any future `expires_at`, up to year 9999. An extreme offset such as `9999-12-31T23:59:59-14:00` also passed validation and crashed with `OverflowError` when saved.
-**Solution/Workaround:** `_create_public_link` rejects expirations more than `_MAX_LINK_LIFETIME` (30 days) ahead, before any UTC conversion.
+**Solution/Workaround:** `LINK_LIFETIME_DAYS` in `app/models/grant.py` defines the offered lifetimes. The form validates against it and renders its options from it, and `_create_public_link` rejects expirations beyond its maximum, before any UTC conversion.
 **Preference:** Enforce link policy in the shared creation function so every entry point gets it.

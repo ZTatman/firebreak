@@ -2,11 +2,12 @@
   {% extends "base.html" %}
 {% endif %}
 {% block content %}
+  {% set create_url = url_for('create_link_from_preview').path %}
   <form id="snapshot-review-form"
         method="post"
-        action="{{ url_for('create_link_from_preview').path }}"
+        action="{{ create_url }}"
         {% if not full_page %}
-          hx-post="{{ url_for('create_link_from_preview').path }}"
+          hx-post="{{ create_url }}"
           hx-target="#snapshot-picker-review"
           hx-sync="#snapshot-picker:drop"
           hx-disabled-elt="find button[type='submit'], #snapshot-review-back, #open-snapshot-picker, #close-snapshot-picker"
@@ -38,9 +39,11 @@
     <div>
       <label for="share-link-expiration" class="picker-step-label">Expires in</label>
       <select id="share-link-expiration" name="expires_in" class="picker-select" required>
-        <option value="1" {% if expires_in == "1" %}selected{% endif %}>1 day</option>
-        <option value="7" {% if not expires_in or expires_in == "7" %}selected{% endif %}>7 days</option>
-        <option value="30" {% if expires_in == "30" %}selected{% endif %}>30 days</option>
+        {% for days in lifetime_days %}
+          <option value="{{ days }}" {% if days == expires_in %}selected{% endif %}>
+            {{ days }} day{{ "s" if days != 1 }}
+          </option>
+        {% endfor %}
       </select>
     </div>
     <p id="snapshot-review-error"

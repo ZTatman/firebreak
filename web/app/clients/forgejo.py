@@ -20,6 +20,8 @@ from pydantic import (
 from app.models.app_settings import AppSettings
 
 _LOCAL_HTTP_HOSTS = {"localhost", "127.0.0.1", "::1", "forgejo"}
+# A full SHA-1 or SHA-256 commit ID, as Forgejo returns them (lowercase hex).
+COMMIT_SHA = r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
 
 
 def _authenticated_base_url(value: str) -> httpx.URL:
@@ -90,7 +92,7 @@ class Commit(BaseModel):
 
     id: str = Field(
         validation_alias=AliasChoices("sha", "id"),
-        pattern=r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$",
+        pattern=COMMIT_SHA,
     )
     message: str = Field(
         validation_alias=AliasChoices("message", AliasPath("commit", "message"))

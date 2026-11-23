@@ -14,6 +14,11 @@ if TYPE_CHECKING:
 
 GrantType = Literal["public", "private"]
 
+# Public links must expire. These are the lifetimes the dashboard offers, and the
+# longest one is the cap for every way of creating a link.
+LINK_LIFETIME_DAYS = (1, 7, 30)
+DEFAULT_LINK_LIFETIME_DAYS = 7
+
 
 class Grant(Base):
     __tablename__ = "grants"

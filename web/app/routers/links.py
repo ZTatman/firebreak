@@ -3,7 +3,7 @@ import hmac
 import secrets
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Literal
+from typing import Annotated
 from uuid import UUID
 
 import httpx
@@ -18,7 +18,7 @@ from app.auth.session import get_current_session, share_link_csrf_token
 from app.clients import forgejo
 from app.deps import get_db
 from app.models.app_settings import AppSettings
-from app.models.grant import Grant
+from app.models.grant import LINK_LIFETIME_DAYS, Grant
 from app.models.session import Session as UserBrowserSession
 from app.routers.repositories import get_forgejo_identity, get_forgejo_token
 from app.settings import get_app_settings
@@ -27,10 +27,8 @@ from app.templating import templates
 router = APIRouter(prefix="/links", tags=["links"])
 
 _REPO_NAME = r"^[^/\\]+$"
-_COMMIT_SHA = r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
 _NO_STORE = {"Cache-Control": "no-store"}
-# Public links must expire; matches the longest option in the dashboard form.
-_MAX_LINK_LIFETIME = timedelta(days=30)
+_MAX_LINK_LIFETIME = timedelta(days=max(LINK_LIFETIME_DAYS))
 
 
 class CreateLinkRequest(BaseModel):
@@ -38,7 +36,7 @@ class CreateLinkRequest(BaseModel):
 
     repo_name: str = Field(max_length=255, pattern=_REPO_NAME)
     repo_owner: str | None = Field(default=None, max_length=255)
-    commit_sha: str = Field(pattern=_COMMIT_SHA)
+    commit_sha: str = Field(pattern=forgejo.COMMIT_SHA)
     expires_at: AwareDatetime
 
 
@@ -73,20 +71,22 @@ async def create_link_from_preview(
     db: Annotated[AsyncSession, Depends(get_db)],
     app_settings: Annotated[AppSettings, Depends(get_app_settings)],
     repo_name: Annotated[str, Form(max_length=255, pattern=_REPO_NAME)],
-    commit_sha: Annotated[str, Form(pattern=_COMMIT_SHA)],
+    commit_sha: Annotated[str, Form(pattern=forgejo.COMMIT_SHA)],
     ref: Annotated[str, Form(min_length=1, max_length=1024)],
-    expires_in: Annotated[Literal["1", "7", "30"], Form()],
+    expires_in: Annotated[int, Form()],
     csrf_token: Annotated[str, Form(max_length=64)],
 ) -> Response:
     if not hmac.compare_digest(
         csrf_token.encode(), share_link_csrf_token(session).encode()
     ):
         raise HTTPException(status_code=403, detail="Reopen the picker and try again.")
+    if expires_in not in LINK_LIFETIME_DAYS:
+        raise HTTPException(status_code=422, detail="Choose a listed expiration.")
 
     link = CreateLinkRequest(
         repo_name=repo_name,
         commit_sha=commit_sha,
-        expires_at=datetime.now(UTC) + timedelta(days=int(expires_in)),
+        expires_at=datetime.now(UTC) + timedelta(days=expires_in),
     )
     is_htmx = request.headers.get("HX-Request") == "true"
     try:
@@ -101,6 +101,7 @@ async def create_link_from_preview(
                 "ref": ref,
                 "commit": commit_sha,
                 "csrf_token": csrf_token,
+                "lifetime_days": LINK_LIFETIME_DAYS,
                 "expires_in": expires_in,
                 "link_error": exc.detail,
                 "full_page": not is_htmx,
@@ -110,11 +111,9 @@ async def create_link_from_preview(
             status_code=200 if is_htmx else exc.status_code,
         )
 
-    headers = (
-        {**_NO_STORE, "HX-Trigger-After-Settle": "share-link-created"}
-        if is_htmx
-        else _NO_STORE
-    )
+    headers = dict(_NO_STORE)
+    if is_htmx:
+        headers["HX-Trigger-After-Settle"] = "share-link-created"
     return templates.TemplateResponse(
         request,
         "share_links.html",
@@ -163,7 +162,8 @@ async def _create_public_link(
     # here rather than overflowing when the row is saved.
     if link.expires_at > now + _MAX_LINK_LIFETIME:
         raise HTTPException(
-            status_code=400, detail="Choose an expiration within 30 days."
+            status_code=400,
+            detail=f"Choose an expiration within {_MAX_LINK_LIFETIME.days} days.",
         )
 
     try:
