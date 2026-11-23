@@ -301,3 +301,9 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Obstacle:** `POST /links/create` rendered full pages for non-HTMX requests. The picker loads every step through HTMX, so the review form can't be reached without JavaScript. That fallback had no double-submit guard and no copy handler (flagged by CodeRabbit on #31).
 **Solution/Workaround:** Removed the full-page branches. The route rejects non-HTMX requests with 400, and both templates are fragments only. API clients use `POST /links/`.
 **Preference:** Don't add no-JS fallbacks to steps that only HTMX can reach.
+
+### Primary buttons borrowed the danger red
+**Area:** web/app/static/css/input.css, web/app/templates/error.html
+**Obstacle:** `.btn-primary` and `.btn-borderless` used `bg-danger`, so "Create link" and the Revoked badge carried the same signal. White on dark `#d93f2d` was 4.47:1, and the dark Revoked badge was 4.3:1. Both are below WCAG AA.
+**Solution/Workaround:** Added `--color-brand` (the logo's `#c62030`, white text 5.75:1) with a hover shade, and pointed primary buttons at it. Danger stays for errors and revocation, with explicit `--color-danger-muted` surfaces and lighter `--color-danger-foreground` (dark 5.5:1, light 4.9:1).
+**Preference:** Brand red owns actions; danger red means error or revoked. Use explicit hex for muted surfaces instead of translucent overlays, so contrast doesn't depend on what's underneath.
