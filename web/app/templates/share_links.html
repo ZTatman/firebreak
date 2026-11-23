@@ -4,23 +4,41 @@
          {% if out_of_band %}hx-swap-oob="outerHTML"{% endif %}>
   <h2 id="share-links-title" class="text-base font-semibold">Share links</h2>
   {% if created_link %}
-    <div class="card space-y-2 p-4">
-      <p id="created-share-notice" role="status">
-        Link created. Copy it now; it won’t be shown again. It won’t open until the snapshot viewer is available.
-      </p>
-      <label for="created-share-url" class="section-header-subtle">Share URL</label>
-      <div class="flex items-center gap-2">
+    <div class="space-y-4 rounded-lg border border-success/45 bg-success-muted/30 p-4 sm:p-5"
+         role="group"
+         aria-labelledby="created-share-title">
+      <div class="flex items-start gap-3">
+        <svg class="mt-0.5 shrink-0 text-success"
+             width="20"
+             height="20"
+             viewBox="0 0 24 24"
+             fill="none"
+             stroke="currentColor"
+             stroke-width="2"
+             stroke-linecap="round"
+             stroke-linejoin="round"
+             aria-hidden="true">
+          <circle cx="12" cy="12" r="10" />
+          <path d="m9 12 2 2 4-4" />
+        </svg>
+        <div class="space-y-1">
+          <h3 id="created-share-title" class="text-sm font-semibold text-foreground">Link created</h3>
+          <p id="created-share-notice" class="text-sm font-medium text-foreground">
+            Copy it now. This link is shown only once.
+          </p>
+          <p class="text-xs text-pretty text-foreground/75">It won’t open anything until the snapshot viewer is available.</p>
+        </div>
+      </div>
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <label for="created-share-url" class="sr-only">Share URL</label>
         <input id="created-share-url"
                type="text"
                class="input-mono min-w-0 flex-1"
                value="{{ created_link.share_url }}"
                aria-describedby="created-share-notice"
+               spellcheck="false"
                readonly />
-        <button id="copy-share-url"
-                type="button"
-                class="group btn btn-sm btn-secondary shrink-0 px-2.5"
-                aria-label="Copy share URL"
-                title="Copy share URL">
+        <button id="copy-share-url" type="button" class="group btn btn-sm btn-primary shrink-0">
           <svg class="group-data-copied:hidden"
                width="16"
                height="16"
@@ -46,11 +64,11 @@
                aria-hidden="true">
             <path d="M20 6 9 17l-5-5" />
           </svg>
+          <span class="group-data-copied:hidden">Copy link</span>
+          <span class="hidden group-data-copied:inline">Copied</span>
         </button>
       </div>
-      <p id="copy-share-url-status"
-         class="min-h-4 text-xs text-muted-foreground"
-         role="status"></p>
+      <p id="copy-share-url-status" class="sr-only text-xs text-foreground/75" role="status"></p>
     </div>
   {% endif %}
   <div class="card overflow-x-auto"
@@ -68,7 +86,8 @@
       </thead>
       <tbody class="divide-y divide-border">
         {% for link in share_links %}
-          <tr>
+          {# Newest first, so the first row is the link just created. #}
+          <tr {% if created_link and loop.first %}class="bg-success-muted/25"{% endif %}>
             <th scope="row" class="px-4 py-3 font-medium">{{ link.repo_owner }}/{{ link.repo_name }}</th>
             <td class="px-4 py-3 font-mono text-xs" title="{{ link.commit_sha }}">{{ link.commit_sha[:12] }}</td>
             <td class="px-4 py-3">
