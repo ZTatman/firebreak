@@ -295,3 +295,9 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Obstacle:** The dashboard form only offers 1, 7, or 30 days, but `POST /links/` accepted any future `expires_at`, up to year 9999. An extreme offset such as `9999-12-31T23:59:59-14:00` also passed validation and crashed with `OverflowError` when saved.
 **Solution/Workaround:** `LINK_LIFETIME_DAYS` in `app/models/grant.py` defines the offered lifetimes. The form validates against it and renders its options from it, and `_create_public_link` rejects expirations beyond its maximum, before any UTC conversion.
 **Preference:** Enforce link policy in the shared creation function so every entry point gets it.
+
+### Share-link no-JavaScript fallback was unreachable
+**Area:** web/app/routers/links.py, web/app/templates/share_link.html, web/app/templates/share_links.html
+**Obstacle:** `POST /links/create` rendered full pages for non-HTMX requests. The picker loads every step through HTMX, so the review form can't be reached without JavaScript. That fallback had no double-submit guard and no copy handler (flagged by CodeRabbit on #31).
+**Solution/Workaround:** Removed the full-page branches. The route rejects non-HTMX requests with 400, and both templates are fragments only. API clients use `POST /links/`.
+**Preference:** Don't add no-JS fallbacks to steps that only HTMX can reach.

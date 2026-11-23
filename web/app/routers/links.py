@@ -76,6 +76,9 @@ async def create_link_from_preview(
     expires_in: Annotated[int, Form()],
     csrf_token: Annotated[str, Form(max_length=64)],
 ) -> Response:
+    # The picker only works through HTMX, so this route only serves its fragments.
+    if request.headers.get("HX-Request") != "true":
+        raise HTTPException(status_code=400, detail="Create links from the dashboard.")
     if not hmac.compare_digest(
         csrf_token.encode(), share_link_csrf_token(session).encode()
     ):
@@ -88,7 +91,6 @@ async def create_link_from_preview(
         commit_sha=commit_sha,
         expires_at=datetime.now(UTC) + timedelta(days=expires_in),
     )
-    is_htmx = request.headers.get("HX-Request") == "true"
     try:
         created_link = await _create_public_link(link, session, db, app_settings)
     except HTTPException as exc:
@@ -96,7 +98,6 @@ async def create_link_from_preview(
             request,
             "share_link.html",
             {
-                "user": session.user,
                 "repo": repo_name,
                 "ref": ref,
                 "commit": commit_sha,
@@ -104,27 +105,21 @@ async def create_link_from_preview(
                 "lifetime_days": LINK_LIFETIME_DAYS,
                 "expires_in": expires_in,
                 "link_error": exc.detail,
-                "full_page": not is_htmx,
             },
             headers=_NO_STORE,
             # HTMX only swaps successful responses by default.
-            status_code=200 if is_htmx else exc.status_code,
+            status_code=200,
         )
 
-    headers = dict(_NO_STORE)
-    if is_htmx:
-        headers["HX-Trigger-After-Settle"] = "share-link-created"
     return templates.TemplateResponse(
         request,
         "share_links.html",
         {
-            "user": session.user,
             "share_links": await list_share_links(db, session.user_id),
             "created_link": created_link,
-            "out_of_band": is_htmx,
-            "full_page": not is_htmx,
+            "out_of_band": True,
         },
-        headers=headers,
+        headers={**_NO_STORE, "HX-Trigger-After-Settle": "share-link-created"},
         status_code=201,
     )
 
