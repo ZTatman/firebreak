@@ -1,0 +1,103 @@
+{% if full_page %}
+  {% extends "base.html" %}
+{% endif %}
+{% block content %}
+  <section id="share-links"
+           class="space-y-3"
+           aria-labelledby="share-links-title"
+           {% if out_of_band %}hx-swap-oob="outerHTML"{% endif %}>
+    <h2 id="share-links-title" class="text-base font-semibold">Share links</h2>
+    {% if created_link %}
+      <div class="card space-y-2 p-4">
+        <p id="created-share-notice" role="status">
+          Link created. Copy it now; it won’t be shown again. It won’t open until the snapshot viewer is available.
+        </p>
+        <label for="created-share-url" class="section-header-subtle">Share URL</label>
+        <div class="flex items-center gap-2">
+          <input id="created-share-url"
+                 type="text"
+                 class="input-mono min-w-0 flex-1"
+                 value="{{ created_link.share_url }}"
+                 aria-describedby="created-share-notice"
+                 readonly />
+          <button id="copy-share-url"
+                  type="button"
+                  class="group btn btn-sm btn-secondary shrink-0 px-2.5"
+                  aria-label="Copy share URL"
+                  title="Copy share URL">
+            <svg class="group-data-copied:hidden"
+                 width="16"
+                 height="16"
+                 viewBox="0 0 24 24"
+                 fill="none"
+                 stroke="currentColor"
+                 stroke-width="2"
+                 stroke-linecap="round"
+                 stroke-linejoin="round"
+                 aria-hidden="true">
+              <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+              <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+            </svg>
+            <svg class="hidden group-data-copied:block"
+                 width="16"
+                 height="16"
+                 viewBox="0 0 24 24"
+                 fill="none"
+                 stroke="currentColor"
+                 stroke-width="2"
+                 stroke-linecap="round"
+                 stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+          </button>
+        </div>
+        <p id="copy-share-url-status"
+           class="min-h-4 text-xs text-muted-foreground"
+           role="status"></p>
+      </div>
+    {% endif %}
+    <div class="card overflow-x-auto"
+         tabindex="0"
+         role="region"
+         aria-labelledby="share-links-title">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-muted text-xs font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+          <tr>
+            <th scope="col" class="px-4 py-3">Repository</th>
+            <th scope="col" class="px-4 py-3">Commit</th>
+            <th scope="col" class="px-4 py-3">Status</th>
+            <th scope="col" class="px-4 py-3">Expires</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border">
+          {% for link in share_links %}
+            <tr>
+              <th scope="row" class="px-4 py-3 font-medium">{{ link.repo_owner }}/{{ link.repo_name }}</th>
+              <td class="px-4 py-3 font-mono text-xs" title="{{ link.commit_sha }}">{{ link.commit_sha[:12] }}</td>
+              <td class="px-4 py-3">
+                {% if link.status == "revoked" %}
+                  <span class="badge-danger">Revoked</span>
+                {% elif link.status == "expired" %}
+                  <span class="badge-expired">Expired</span>
+                {% else %}
+                  <span class="badge-success">Active</span>
+                {% endif %}
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">
+                <time datetime="{{ link.expires_at.isoformat() }}">{{ link.expires_at.strftime("%b %d, %Y %H:%M %Z") }}</time>
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="4" class="px-4 py-5 text-center text-muted-foreground">No share links created yet.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if full_page %}
+      <a href="{{ url_for('dashboard').path }}" class="btn btn-sm btn-secondary">Back to dashboard</a>
+    {% endif %}
+  </section>
+{% endblock %}

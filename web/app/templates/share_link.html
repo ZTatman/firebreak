@@ -1,0 +1,61 @@
+{% if full_page %}
+  {% extends "base.html" %}
+{% endif %}
+{% block content %}
+  <form id="snapshot-review-form"
+        method="post"
+        action="{{ url_for('create_link_from_preview').path }}"
+        {% if not full_page %}
+          hx-post="{{ url_for('create_link_from_preview').path }}"
+          hx-target="#snapshot-picker-review"
+          hx-sync="#snapshot-picker:drop"
+          hx-disabled-elt="find button[type='submit'], #snapshot-review-back, #open-snapshot-picker, #close-snapshot-picker"
+        {% endif %}
+        aria-labelledby="snapshot-review-title"
+        class="space-y-4">
+    <h3 id="snapshot-review-title" class="text-sm font-semibold" tabindex="-1">Review &amp; create</h3>
+    <p class="text-xs text-muted-foreground">
+      This link is public. Once the viewer is available, anyone with the link can open this snapshot until it expires.
+    </p>
+    <dl class="snapshot-grid overflow-hidden rounded-md border border-border">
+      <div class="snapshot-cell">
+        <dt class="section-header-subtle">Repository</dt>
+        <dd class="snapshot-value">{{ repo }}</dd>
+      </div>
+      <div class="snapshot-cell">
+        <dt class="section-header-subtle">Branch</dt>
+        <dd class="snapshot-value">{{ ref }}</dd>
+      </div>
+      <div class="snapshot-cell">
+        <dt class="section-header-subtle">Commit</dt>
+        <dd class="snapshot-value">{{ commit }}</dd>
+      </div>
+    </dl>
+    <input type="hidden" name="repo_name" value="{{ repo }}" />
+    <input type="hidden" name="ref" value="{{ ref }}" />
+    <input type="hidden" name="commit_sha" value="{{ commit }}" />
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <div>
+      <label for="share-link-expiration" class="picker-step-label">Expires in</label>
+      <select id="share-link-expiration" name="expires_in" class="picker-select" required>
+        <option value="1" {% if expires_in == "1" %}selected{% endif %}>1 day</option>
+        <option value="7" {% if not expires_in or expires_in == "7" %}selected{% endif %}>7 days</option>
+        <option value="30" {% if expires_in == "30" %}selected{% endif %}>30 days</option>
+      </select>
+    </div>
+    <p id="snapshot-review-error"
+       class="input-error"
+       role="alert"
+       {% if not link_error %}hidden{% endif %}>
+      {{ link_error or "Could not create the link. Reload the dashboard to check whether it was created, then reopen the picker to try again." }}
+    </p>
+    <div class="picker-actions">
+      {% if full_page %}
+        <a href="{{ url_for('dashboard').path }}" class="btn btn-sm btn-secondary">Back to dashboard</a>
+      {% else %}
+        <button id="snapshot-review-back" type="button" class="btn btn-sm btn-secondary">Back</button>
+      {% endif %}
+      <button type="submit" class="btn btn-sm btn-primary">Create link</button>
+    </div>
+  </form>
+{% endblock %}

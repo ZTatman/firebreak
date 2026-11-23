@@ -383,6 +383,11 @@
         scrollbar-gutter: stable;
     }
 
+    #snapshot-picker-review:not(:has(#snapshot-review-form)),
+    .picker-steps:has(#snapshot-review-form) > #snapshot-picker-body {
+        display: none;
+    }
+
     .picker-step {
         display: grid;
         grid-template-columns: 1.5rem minmax(0, 1fr);

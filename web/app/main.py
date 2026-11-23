@@ -180,6 +180,7 @@ async def dashboard(
         {
             "user": sess.user,
             "pat_registered": sess.user.has_pat,
+            "share_links": await links.list_share_links(db, sess.user_id),
             "repos": repos,
             "repo_error": repo_error,
             "repo_page": page,
