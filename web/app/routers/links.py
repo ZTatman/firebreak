@@ -70,6 +70,7 @@ async def create_link_from_preview(
     session: Annotated[UserBrowserSession, Depends(get_current_session)],
     db: Annotated[AsyncSession, Depends(get_db)],
     app_settings: Annotated[AppSettings, Depends(get_app_settings)],
+    repo_owner: Annotated[str, Form(min_length=1, max_length=255)],
     repo_name: Annotated[str, Form(max_length=255, pattern=_REPO_NAME)],
     commit_sha: Annotated[str, Form(pattern=forgejo.COMMIT_SHA)],
     ref: Annotated[str, Form(min_length=1, max_length=1024)],
@@ -87,6 +88,9 @@ async def create_link_from_preview(
         raise HTTPException(status_code=422, detail="Choose a listed expiration.")
 
     link = CreateLinkRequest(
+        # The owner shown on the review step; creation rejects it if the PAT's
+        # account differs, so the link is for exactly what the user reviewed.
+        repo_owner=repo_owner,
         repo_name=repo_name,
         commit_sha=commit_sha,
         expires_at=datetime.now(UTC) + timedelta(days=expires_in),
@@ -98,6 +102,7 @@ async def create_link_from_preview(
             request,
             "share_link.html",
             {
+                "owner": repo_owner,
                 "repo": repo_name,
                 "ref": ref,
                 "commit": commit_sha,
@@ -105,6 +110,8 @@ async def create_link_from_preview(
                 "lifetime_days": LINK_LIFETIME_DAYS,
                 "expires_in": expires_in,
                 "link_error": exc.detail,
+                # Every access-token failure says "token"; those are fixed in Settings.
+                "link_error_in_settings": "token" in str(exc.detail).lower(),
             },
             headers=_NO_STORE,
             # HTMX only swaps successful responses by default.
@@ -132,6 +139,7 @@ async def list_share_links(db: AsyncSession, user_id: UUID) -> Sequence[Grant]:
                 Grant.repo_owner,
                 Grant.repo_name,
                 Grant.commit_sha,
+                Grant.created_at,
                 Grant.expires_at,
                 Grant.revoked_at,
             )

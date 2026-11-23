@@ -12,7 +12,7 @@
   <dl class="snapshot-grid overflow-hidden rounded-md border border-border">
     <div class="snapshot-cell">
       <dt class="section-header-subtle">Repository</dt>
-      <dd class="snapshot-value">{{ repo }}</dd>
+      <dd class="snapshot-value">{{ owner }}/{{ repo }}</dd>
     </div>
     <div class="snapshot-cell">
       <dt class="section-header-subtle">Branch</dt>
@@ -23,6 +23,7 @@
       <dd class="snapshot-value">{{ commit }}</dd>
     </div>
   </dl>
+  <input type="hidden" name="repo_owner" value="{{ owner }}" />
   <input type="hidden" name="repo_name" value="{{ repo }}" />
   <input type="hidden" name="ref" value="{{ ref }}" />
   <input type="hidden" name="commit_sha" value="{{ commit }}" />
@@ -41,7 +42,15 @@
      class="input-error"
      role="alert"
      {% if not link_error %}hidden{% endif %}>
-    {{ link_error or "Could not create the link. Reload the dashboard to check whether it was created, then reopen the picker to try again." }}
+    {% if link_error %}
+      {{ link_error }}
+      {% if link_error_in_settings %}
+        <a href="{{ url_for('settings_page').path }}"
+           class="underline underline-offset-2 hover:text-foreground">Go to Settings</a>
+      {% endif %}
+    {% else %}
+      Couldn’t create the link. Check your connection and select Create link again. If it keeps failing, close and reopen this dialog.
+    {% endif %}
   </p>
   <div class="picker-actions">
     <button id="snapshot-review-back" type="button" class="btn btn-sm btn-secondary">Back</button>

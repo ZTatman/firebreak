@@ -307,3 +307,9 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Obstacle:** `.btn-primary` and `.btn-borderless` used `bg-danger`, so "Create link" and the Revoked badge carried the same signal. White on dark `#d93f2d` was 4.47:1, and the dark Revoked badge was 4.3:1. Both are below WCAG AA.
 **Solution/Workaround:** Added `--color-brand` (the logo's `#c62030`, white text 5.75:1) with a hover shade, and pointed primary buttons at it. Danger stays for errors and revocation, with explicit `--color-danger-muted` surfaces and lighter `--color-danger-foreground` (dark 5.5:1, light 4.9:1).
 **Preference:** Brand red owns actions; danger red means error or revoked. Use explicit hex for muted surfaces instead of translucent overlays, so contrast doesn't depend on what's underneath.
+
+### Review step must show the owner it verifies
+**Area:** web/app/routers/repositories.py, web/app/routers/links.py, web/app/templates/share_link.html
+**Obstacle:** The review step showed only the repository name, while the Share links table showed `owner/repo`. The owner was resolved only at creation time, so the user never saw which account the public link would come from.
+**Solution/Workaround:** `preview_snapshot` resolves the owner from the linked identity and shows `owner/repo`. The form posts `repo_owner`, and `_create_public_link` rejects it if the access token's account differs. The link is created for exactly what was reviewed.
+**Preference:** Access-token errors all contain "token". The error re-render keys a "Go to Settings" link off that word instead of a parallel error code; revisit if token messages change.

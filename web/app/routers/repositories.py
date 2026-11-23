@@ -143,6 +143,7 @@ PICKER_PAGE_SIZE = 50
 async def preview_snapshot(
     request: Request,
     session: Annotated[UserBrowserSession, Depends(get_current_session)],
+    owner: Annotated[str, Depends(get_forgejo_owner)],
     repo: Annotated[str, Query(min_length=1, max_length=255)],
     ref: Annotated[str, Query(min_length=1, max_length=1024)],
     commit: Annotated[str, Query(pattern=forgejo.COMMIT_SHA)],
@@ -152,6 +153,7 @@ async def preview_snapshot(
         request,
         "share_link.html",
         {
+            "owner": owner,
             "repo": repo,
             "ref": ref,
             "commit": commit,
