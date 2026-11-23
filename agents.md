@@ -176,11 +176,23 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Solution/Workaround:** Deferred outside the repository-table cleanup. Annotate the mapping with `ClassVar` when addressing this lint issue.
 **Preference:** Do not mix unrelated database cleanup into repository UI changes.
 
-### Create-share-link button points to an unfinished route
-**Area:** web/app/templates/dashboard.html, web/app/routers/links.py
-**Obstacle:** The existing button points to `/links/create`, which has no handler; `POST /links/` is still a 501 stub and the public viewer is not built.
-**Solution/Workaround:** Deferred to the share-link implementation. The user intends to write link creation themselves.
-**Preference:** Keep repository-table cleanup separate from implementing the share-link flow.
+### Link creation must not resolve the branch again
+**Area:** web/app/routers/links.py, web/app/clients/forgejo.py
+**Obstacle:** A branch can move after preview, and a stored PAT can belong to a different Forgejo account.
+**Solution/Workaround:** Match the PAT user ID to the linked identity and repository owner, verify the exact selected SHA, and save only the link token hash. Use a session-bound CSRF token on the browser form; the JSON endpoint only accepts `application/json`.
+**Preference:** Keep the picker preview-only and the public viewer separate. The viewer will need to avoid logging raw share tokens.
+
+### Replacing the picker body loses the selected options
+**Area:** web/app/templates/dashboard.html, web/app/templates/snapshot_picker.html
+**Obstacle:** Swapping review into the picker body removes the loaded repository, branch, and commit controls, so going back would need to reload them.
+**Solution/Workaround:** Swap review into a separate dialog region and keep the picker hidden until Back. On successful creation, swap the Share links table out of band before closing the dialog.
+**Preference:** Preserve selections without refetching, and show the raw share URL only in the creation response.
+
+### Offline uv lock refresh changed unrelated entries
+**Area:** web/uv.lock
+**Obstacle:** The local uv 0.10.7 offline refresh downgraded certifi and rewrote the lockfile revision while removing the unused email extra.
+**Solution/Workaround:** Retained the original certifi entry and lockfile revision, kept only the email dependency removals, and verified with `uv lock --check`.
+**Preference:** Check lockfile diffs for unrelated changes after an offline refresh.
 
 ### Table divider utility has no matching theme token
 **Area:** web/app/templates/dashboard.html, web/app/static/css/input.css
@@ -271,3 +283,9 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Obstacle:** HTMX clears its loading indicator after a failed request without replacing the old branch or commit controls.
 **Solution/Workaround:** Mark the dependent fragment `inert` before sending a request and replace its outer element only when a response swaps. Show an inline error if the old fragment remains after loading.
 **Preference:** Don't allow a stale selection to submit; preserve the dialog's layout during loading and failure.
+
+### Review-step failures bubbled past the review listener
+**Area:** web/app/templates/dashboard.html
+**Obstacle:** HTMX fires request events on the element that sent the request, not on `hx-target`. The Next form lives in the picker body, so a listener on `#snapshot-picker-review` never saw a failed review load, and the dialog showed no error.
+**Solution/Workaround:** Listen for `htmx:responseError` and `htmx:sendError` on the dialog and filter by `detail.target`. Show the create form's error if present, otherwise the separate review-load error.
+**Preference:** Filter dialog-level listeners by target rather than attaching listeners to swap targets.
