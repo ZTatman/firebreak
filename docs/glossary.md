@@ -11,3 +11,5 @@ A **share link** opens a **snapshot**. A **grant** is the internal record Firebr
 The dashboard's snapshot picker lives under `/dashboard/snapshot-picker`. Reviewing a snapshot in the dialog does not create, publish, or revoke a share link. Existing JSON repository listings stay under `/links/repositories` for compatibility.
 
 Creating a public share link saves a grant for the selected commit, adds a row to the dashboard's Share links table, and displays the URL once. The URL does not open a snapshot until the viewer is implemented.
+
+Revoking a share link records the revocation time on its grant and keeps the record, so the Share links table shows it as Revoked. Only active links can be revoked; an expired link keeps its expiry time.

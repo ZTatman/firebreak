@@ -167,6 +167,70 @@
       </script>
     {% endif %}
     {% include "share_links.html" %}
+    {# Outside #share-links, which is replaced after creating a link, and outside the
+       access-token check: revoking only needs the Firebreak session. #}
+    <p id="share-links-status" class="sr-only" role="status"></p>
+    <dialog id="revoke-share-link"
+            class="picker-dialog confirm-dialog"
+            aria-labelledby="revoke-share-link-title"
+            aria-describedby="revoke-share-link-description">
+      {# method="dialog" only closes the dialog if htmx hasn't taken over the form yet. #}
+      <form id="revoke-share-link-form"
+            method="dialog"
+            hx-swap="none"
+            hx-disabled-elt="#revoke-share-link-form button"
+            class="space-y-4 p-6">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <div class="space-y-1">
+          <h2 id="revoke-share-link-title" class="picker-title">Revoke this share link?</h2>
+          <p id="revoke-share-link-target" class="font-mono text-xs text-muted-foreground"></p>
+        </div>
+        <p id="revoke-share-link-description" class="text-sm text-pretty">
+          People with this link will no longer be able to open it through Firebreak. It can’t take back anything already copied.
+        </p>
+        <p id="revoke-share-link-error" class="input-error" role="alert" hidden>
+          Couldn’t revoke the share link. Check your connection, or reload the page and try again.
+        </p>
+        <div class="picker-actions">
+          <button type="button"
+                  class="btn btn-sm btn-secondary"
+                  commandfor="revoke-share-link"
+                  command="close">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-danger">Revoke link</button>
+        </div>
+      </form>
+    </dialog>
+    <script>
+      {
+        const dialog = document.getElementById("revoke-share-link");
+        const form = document.getElementById("revoke-share-link-form");
+        const error = document.getElementById("revoke-share-link-error");
+        // Each active row's Revoke button opens this dialog (commandfor) and names its link.
+        dialog.addEventListener("command", ({ command, source }) => {
+          if (command !== "show-modal" || !source?.dataset.revokeUrl) return;
+          document.getElementById("revoke-share-link-target").textContent = source.dataset.revokeLabel;
+          error.hidden = true;
+          form.setAttribute("hx-post", source.dataset.revokeUrl);
+          htmx.process(form);
+        });
+        const showError = () => { error.hidden = false; };
+        form.addEventListener("htmx:responseError", showError);
+        form.addEventListener("htmx:sendError", showError);
+        document.body.addEventListener("share-link-revoked", ({ detail: { id, message } }) => {
+          dialog.close();
+          // The one-time URL card for this link would only show a URL that no longer opens.
+          const card = document.getElementById("created-share");
+          if (card?.dataset.linkId === id) card.remove();
+          // Cleared first, so the same message is announced again for the next link.
+          const status = document.getElementById("share-links-status");
+          status.textContent = "";
+          requestAnimationFrame(() => { status.textContent = message; });
+          // The table shows from the sm breakpoint and the list below it; focus whichever is visible.
+          const rows = [`share-link-${id}`, `share-link-${id}-item`].map((rowId) => document.getElementById(rowId));
+          rows.find((row) => row?.checkVisibility())?.focus();
+        });
+      }
+    </script>
     {% if not pat_registered %}
       <div class="rounded-lg border border-warning-muted bg-warning-muted/40 px-5 py-4">
         <p class="text-sm font-semibold text-warning-foreground">Access token required</p>

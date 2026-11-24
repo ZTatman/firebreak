@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import json
 import secrets
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -10,7 +11,7 @@ import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
@@ -59,7 +60,7 @@ async def create_link(
     content_type = request.headers.get("content-type", "").partition(";")[0]
     if content_type.strip().lower() != "application/json":
         raise HTTPException(status_code=415, detail="Use application/json.")
-    result = await _create_public_link(link, session, db, app_settings)
+    _, result = await _create_public_link(link, session, db, app_settings)
     response.headers.update(_NO_STORE)
     return result
 
@@ -96,7 +97,9 @@ async def create_link_from_preview(
         expires_at=datetime.now(UTC) + timedelta(days=expires_in),
     )
     try:
-        created_link = await _create_public_link(link, session, db, app_settings)
+        created_link_id, created_link = await _create_public_link(
+            link, session, db, app_settings
+        )
     except HTTPException as exc:
         return templates.TemplateResponse(
             request,
@@ -123,6 +126,7 @@ async def create_link_from_preview(
         {
             "share_links": await list_share_links(db, session.user_id),
             "created_link": created_link,
+            "created_link_id": created_link_id,
             "out_of_band": True,
         },
         headers={**_NO_STORE, "HX-Trigger-After-Settle": "share-link-created"},
@@ -130,8 +134,67 @@ async def create_link_from_preview(
     )
 
 
-async def list_share_links(db: AsyncSession, user_id: UUID) -> Sequence[Grant]:
-    stmt = (
+@router.post("/{link_id}/revoke", response_class=HTMLResponse, include_in_schema=False)
+async def revoke_link(
+    request: Request,
+    link_id: UUID,
+    session: Annotated[UserBrowserSession, Depends(get_current_session)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    csrf_token: Annotated[str, Form(max_length=64)],
+) -> Response:
+    # The dashboard's confirmation dialog only works through HTMX.
+    if request.headers.get("HX-Request") != "true":
+        raise HTTPException(status_code=400, detail="Revoke links from the dashboard.")
+    # The dashboard carries the same session-bound token as the create form.
+    if not hmac.compare_digest(
+        csrf_token.encode(), share_link_csrf_token(session).encode()
+    ):
+        raise HTTPException(status_code=403, detail="Reload the page and try again.")
+
+    # One statement, so a link that expires or is revoked in the meantime is left
+    # alone: an earlier revocation time is kept, and expired links keep ending at
+    # their expiry.
+    revoked_id = await db.scalar(
+        update(Grant)
+        .where(
+            Grant.id == link_id,
+            Grant.user_id == session.user_id,
+            Grant.revoked_at.is_(None),
+            Grant.expires_at > func.now(),
+        )
+        .values(revoked_at=func.now())
+        .returning(Grant.id)
+    )
+    await db.commit()
+
+    link = await db.scalar(
+        _share_links_query(session.user_id).where(Grant.id == link_id)
+    )
+    if link is None:
+        # Also for another user's link, so its existence isn't revealed.
+        raise HTTPException(status_code=404, detail="Share link not found.")
+
+    if revoked_id is not None:
+        message = "Share link revoked."
+    elif link.status == "revoked":
+        message = "This share link was already revoked."
+    else:
+        message = "This share link has already expired."
+    return templates.TemplateResponse(
+        request,
+        "share_link_revoked.html",
+        {"link": link},
+        headers={
+            **_NO_STORE,
+            "HX-Trigger-After-Settle": json.dumps(
+                {"share-link-revoked": {"id": str(link.id), "message": message}}
+            ),
+        },
+    )
+
+
+def _share_links_query(user_id: UUID) -> Select[tuple[Grant]]:
+    return (
         select(Grant)
         .options(
             load_only(
@@ -144,7 +207,12 @@ async def list_share_links(db: AsyncSession, user_id: UUID) -> Sequence[Grant]:
             )
         )
         .where(Grant.user_id == user_id)
-        .order_by(Grant.created_at.desc(), Grant.id.desc())
+    )
+
+
+async def list_share_links(db: AsyncSession, user_id: UUID) -> Sequence[Grant]:
+    stmt = _share_links_query(user_id).order_by(
+        Grant.created_at.desc(), Grant.id.desc()
     )
     return (await db.scalars(stmt)).all()
 
@@ -154,7 +222,8 @@ async def _create_public_link(
     session: UserBrowserSession,
     db: AsyncSession,
     app_settings: AppSettings,
-) -> CreateLinkResponse:
+) -> tuple[UUID, CreateLinkResponse]:
+    """Save a public link; return its ID and the one-time share URL."""
     if link.repo_name in {".", ".."}:
         raise HTTPException(status_code=400, detail="Invalid repository name.")
     now = datetime.now(UTC)
@@ -199,19 +268,19 @@ async def _create_public_link(
         raise HTTPException(status_code=400, detail="Choose a future expiration.")
 
     token = secrets.token_urlsafe(32)
-    db.add(
-        Grant(
-            token_hash=hashlib.sha256(token.encode()).hexdigest(),
-            user_id=session.user_id,
-            expires_at=link.expires_at,
-            repo_owner=owner,
-            repo_name=repo,
-            commit_sha=link.commit_sha,
-            grant_type="public",
-        )
+    grant = Grant(
+        token_hash=hashlib.sha256(token.encode()).hexdigest(),
+        user_id=session.user_id,
+        expires_at=link.expires_at,
+        repo_owner=owner,
+        repo_name=repo,
+        commit_sha=link.commit_sha,
+        grant_type="public",
     )
+    db.add(grant)
+    # The insert returns the generated ID, which stays loaded after commit.
     await db.commit()
-    return CreateLinkResponse(
+    return grant.id, CreateLinkResponse(
         expires_at=link.expires_at,
         commit_sha=link.commit_sha,
         share_url=f"{str(base_url).rstrip('/')}/share/{token}",

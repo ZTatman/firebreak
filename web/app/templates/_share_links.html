@@ -1,0 +1,67 @@
+{# One share link, rendered as a table row and as a mobile list item. share_links.html
+   lists them; share_link_revoked.html swaps one link's pair after revoking. #}
+{% macro status_badge(link) -%}
+  {%- if link.status == "revoked" -%}
+    <span class="badge-danger">Revoked</span>
+  {%- elif link.status == "expired" -%}
+    <span class="badge-expired">Expired</span>
+  {%- else -%}
+    <span class="badge-success">Active</span>
+  {%- endif -%}
+{%- endmacro %}
+{% macro timestamp(moment, with_time=false) -%}
+  <time datetime="{{ moment.isoformat() }}">{{ moment | utc_datetime if with_time else moment | utc_date }}</time>
+{%- endmacro %}
+{% macro lifetime(link) -%}
+  {{ {"revoked": "Revoked", "expired": "Expired"}.get(link.status, "Expires") }} {{ link.ends_at | relative_time }}
+{%- endmacro %}
+{# Opens the revoke dialog in dashboard.html, which reads the data attributes. #}
+{% macro revoke_button(link, class="") -%}
+  {%- if link.status == "active" -%}
+    <button type="button"
+            class="btn btn-xs btn-danger-quiet {{ class }}"
+            commandfor="revoke-share-link"
+            command="show-modal"
+            data-revoke-url="{{ url_for('revoke_link', link_id=link.id).path }}"
+            data-revoke-label="{{ link.repo_owner }}/{{ link.repo_name }} at {{ link.commit_sha[:12] }}"
+            aria-label="Revoke share link for {{ link.repo_owner }}/{{ link.repo_name }} at {{ link.commit_sha[:12] }}">
+      Revoke
+    </button>
+  {%- endif -%}
+{%- endmacro %}
+{% macro table_row(link, highlight=false, out_of_band=false) -%}
+  <tr id="share-link-{{ link.id }}"
+      class="focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring {% if highlight %}bg-success-muted/25{% endif %}"
+      tabindex="-1"
+      {% if out_of_band %}hx-swap-oob="outerHTML"{% endif %}>
+    <th scope="row" class="px-4 py-3 font-medium">{{ link.repo_owner }}/{{ link.repo_name }}</th>
+    <td class="px-4 py-3 font-mono text-xs" title="{{ link.commit_sha }}">{{ link.commit_sha[:12] }}</td>
+    <td class="px-4 py-3">{{ status_badge(link) }}</td>
+    <td class="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">{{ timestamp(link.created_at) }}</td>
+    <td class="whitespace-nowrap px-4 py-3">
+      <span class="block text-sm">{{ lifetime(link) }}</span>
+      <span class="block text-xs text-muted-foreground">{{ timestamp(link.ends_at, with_time=true) }}</span>
+    </td>
+    <td class="px-4 py-3 text-right">{{ revoke_button(link, "-my-1") }}</td>
+  </tr>
+{%- endmacro %}
+{% macro list_item(link, highlight=false, out_of_band=false) -%}
+  <li id="share-link-{{ link.id }}-item"
+      class="space-y-1.5 px-4 py-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring {% if highlight %}bg-success-muted/25{% endif %}"
+      tabindex="-1"
+      {% if out_of_band %}hx-swap-oob="outerHTML"{% endif %}>
+    <div class="flex items-start justify-between gap-3">
+      <span class="min-w-0 break-words font-medium">{{ link.repo_owner }}/{{ link.repo_name }}</span>
+      <span class="shrink-0">{{ status_badge(link) }}</span>
+    </div>
+    <p class="text-sm">{{ lifetime(link) }}</p>
+    <div class="flex items-end justify-between gap-3">
+      <p class="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+        <span class="font-mono" title="{{ link.commit_sha }}">{{ link.commit_sha[:12] }}</span>
+        <span>Created {{ timestamp(link.created_at) }}</span>
+      </p>
+      {# Negative margin keeps active items the same height as the others. #}
+      {{ revoke_button(link, "-my-1") }}
+    </div>
+  </li>
+{%- endmacro %}

@@ -1,0 +1,5 @@
+{% from "_share_links.html" import table_row, list_item with context %}
+{# Swaps only this link's row and list item, so an unsaved one-time URL card stays.
+   <template> lets htmx parse a bare <tr> and <li>. #}
+<template>{{ table_row(link, out_of_band=true) }}</template>
+<template>{{ list_item(link, out_of_band=true) }}</template>

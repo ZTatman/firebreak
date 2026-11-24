@@ -162,6 +162,15 @@
         @apply bg-brand text-brand-foreground hover:bg-brand-hover;
     }
 
+    /* Danger is for revoking, not primary actions. Muted surface keeps AA contrast. */
+    .btn-danger {
+        @apply border border-danger/50 bg-danger-muted text-danger-foreground hover:border-danger;
+    }
+
+    .btn-danger-quiet {
+        @apply text-danger-foreground hover:bg-danger-muted;
+    }
+
     .app-header {
         position: relative;
         z-index: 10;
@@ -331,6 +340,12 @@
         background: var(--color-card);
         color: var(--color-card-foreground);
         box-shadow: 0 24px 64px rgb(0 0 0 / 55%);
+    }
+
+    /* A short confirmation in the picker's dialog frame. */
+    .confirm-dialog {
+        inline-size: min(28rem, calc(100dvw - 2rem));
+        block-size: fit-content;
     }
 
     .picker-dialog::backdrop {

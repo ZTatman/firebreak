@@ -316,6 +316,12 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 
 ### One-time share URL needs a leave guard
 **Area:** web/app/templates/dashboard.html, web/app/templates/share_links.html
-**Obstacle:** The share URL is shown once and can't be recovered. Revoke isn't built yet, so losing it before copying means creating a duplicate public link.
+**Obstacle:** The share URL is shown once and can't be recovered. Losing it before copying means creating another public link and revoking the lost one.
 **Solution/Workaround:** `#created-share` counts as saved after a successful Copy link, or after a manual copy while the URL field has focus. Until then, `beforeunload` warns before the page is left, and Done asks for confirmation. Copy link stays on "Copied" once used.
 **Preference:** Guard on the client only; the server never stores the raw token.
+
+### Revoking must not replace the Share links section
+**Area:** web/app/routers/links.py, web/app/templates/_share_links.html, web/app/templates/share_link_revoked.html, web/app/templates/dashboard.html
+**Obstacle:** Swapping all of `#share-links` after a revoke would remove an unsaved one-time URL card. A revoke could also race an expiry or a second click, and a revoked expired link would report a later end than its real expiry.
+**Solution/Workaround:** `POST /links/{id}/revoke` (HTMX only, create-form CSRF token) sets `revoked_at` with a single conditional `UPDATE`: owned, not revoked, not expired. Otherwise the row is returned unchanged, or 404 for a missing or unowned link. The response swaps only that link's table row and mobile list item out of band, each wrapped in `<template>`. One native dialog sits outside `#share-links` and the access-token check, and carries the CSRF token once. Revoking the link in the one-time card removes the card without asking.
+**Preference:** Revoke never deletes. Share-link macros imported for `url_for` need `with context`. A modal dialog with `block-size: auto` stretches to the viewport; use `fit-content`.
