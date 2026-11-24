@@ -183,7 +183,8 @@ async def revoke_link(
     return templates.TemplateResponse(
         request,
         "share_link_revoked.html",
-        {"link": link},
+        # The whole list, since the link moves from Active to Ended.
+        {"share_links": await list_share_links(db, session.user_id)},
         headers={
             **_NO_STORE,
             "HX-Trigger-After-Settle": json.dumps(
@@ -261,6 +262,9 @@ async def _create_public_link(
         link.repo_name,
         link.commit_sha,
     )
+    # The Forgejo API returns the owner of the commit, which may differ from the
+    # user-supplied owner. If the user supplied an owner, it must match the
+    # Forgejo result, or the link is for a repository the user doesn't own.
     if link.repo_owner is not None and link.repo_owner.casefold() != owner.casefold():
         raise HTTPException(status_code=403, detail="Select a repository you own.")
     # Check again: the Forgejo requests above can outlast a near-term expiration.

@@ -1,5 +1,5 @@
 {% from "_icons.html" import icon %}
-{% from "_share_links.html" import table_row, list_item with context %}
+{% from "_share_links.html" import tabs with context %}
 <section id="share-links"
          class="space-y-3"
          aria-labelledby="share-links-title"
@@ -54,37 +54,5 @@
       <p id="copy-share-url-status" class="sr-only text-xs text-foreground/75" role="status"></p>
     </div>
   {% endif %}
-  {% if share_links %}
-    <div class="card hidden overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:block"
-         tabindex="0"
-         role="region"
-         aria-labelledby="share-links-title">
-      <table class="w-full min-w-180 text-left text-sm">
-        <thead class="bg-muted text-xs font-semibold uppercase tracking-[0.05em] text-muted-foreground">
-          <tr>
-            <th scope="col" class="px-4 py-3">Repository</th>
-            <th scope="col" class="px-4 py-3">Commit</th>
-            <th scope="col" class="px-4 py-3">Status</th>
-            <th scope="col" class="px-4 py-3">Created</th>
-            <th scope="col" class="px-4 py-3">Expires</th>
-            <th scope="col" class="px-4 py-3">
-              <span class="sr-only">Actions</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-border">
-          {% for link in share_links %}
-            {{ table_row(link, highlight=link.id == created_link_id) }}
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <ul class="card divide-y divide-border sm:hidden" aria-labelledby="share-links-title">
-      {% for link in share_links %}
-        {{ list_item(link, highlight=link.id == created_link_id) }}
-      {% endfor %}
-    </ul>
-  {% else %}
-    <p class="card px-4 py-5 text-center text-sm text-muted-foreground">No share links created yet.</p>
-  {% endif %}
+  {{ tabs(share_links, highlight_id=created_link_id) }}
 </section>

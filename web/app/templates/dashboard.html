@@ -225,9 +225,54 @@
           const status = document.getElementById("share-links-status");
           status.textContent = "";
           requestAnimationFrame(() => { status.textContent = message; });
-          // The table shows from the sm breakpoint and the list below it; focus whichever is visible.
-          const rows = [`share-link-${id}`, `share-link-${id}-item`].map((rowId) => document.getElementById(rowId));
-          rows.find((row) => row?.checkVisibility())?.focus();
+          // The link has moved to the Revoked tab. Focus the selected tab, which announces
+          // its new count.
+          document.querySelector('#share-link-tabs [role="tab"][aria-selected="true"]')?.focus();
+        });
+      }
+      {
+        // Share link status tabs (share_links.html). The tabs are re-rendered after a revoke
+        // or a new link, so listen on the document.
+        // Also runs on incoming markup before it is swapped in, so panels are looked up
+        // inside the tab's own container rather than the document.
+        const selectTab = (tab, focus = true) => {
+          const container = tab.closest("#share-link-tabs");
+          for (const other of container.querySelectorAll('[role="tab"]')) {
+            const selected = other === tab;
+            other.setAttribute("aria-selected", String(selected));
+            other.tabIndex = selected ? 0 : -1;
+            container.querySelector(`#${other.getAttribute("aria-controls")}`).hidden = !selected;
+          }
+          if (focus) tab.focus();
+        };
+        document.addEventListener("click", ({ target }) => {
+          const tab = target.closest('#share-link-tabs [role="tab"]');
+          if (tab) selectTab(tab);
+        });
+        // Arrow keys move between tabs and select them; Home and End jump to the ends.
+        document.addEventListener("keydown", (event) => {
+          const tab = event.target.closest?.('#share-link-tabs [role="tab"]');
+          if (!tab) return;
+          const tabs = [...tab.parentElement.querySelectorAll('[role="tab"]')];
+          const index = tabs.indexOf(tab);
+          const next = {
+            ArrowRight: tabs[(index + 1) % tabs.length],
+            ArrowLeft: tabs[(index - 1 + tabs.length) % tabs.length],
+            Home: tabs[0],
+            End: tabs.at(-1),
+          }[event.key];
+          if (!next) return;
+          event.preventDefault();
+          selectTab(next);
+        });
+        // A revoke re-renders only the tabs: keep the one the user was on. Creating a link
+        // re-renders the whole section and shows Active, where the new link is.
+        // htmx passes the incoming element wrapped in a DocumentFragment.
+        document.body.addEventListener("htmx:oobBeforeSwap", ({ detail: { target, fragment } }) => {
+          if (target?.id !== "share-link-tabs") return;
+          const current = target.querySelector('[role="tab"][aria-selected="true"]');
+          const tab = current && fragment.querySelector(`#share-link-tabs #${current.id}`);
+          if (tab) selectTab(tab, false);
         });
       }
     </script>

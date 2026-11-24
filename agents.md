@@ -306,7 +306,7 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Area:** web/app/static/css/input.css, web/app/templates/error.html
 **Obstacle:** `.btn-primary` and `.btn-borderless` used `bg-danger`, so "Create link" and the Revoked badge carried the same signal. White on dark `#d93f2d` was 4.47:1, and the dark Revoked badge was 4.3:1. Both are below WCAG AA.
 **Solution/Workaround:** Added `--color-brand` (the logo's `#c62030`, white text 5.75:1) with a hover shade, and pointed primary buttons at it. Danger stays for errors and revocation, with explicit `--color-danger-muted` surfaces and lighter `--color-danger-foreground` (dark 5.5:1, light 4.9:1).
-**Preference:** Brand red owns actions; danger red means error or revoked. Use explicit hex for muted surfaces instead of translucent overlays, so contrast doesn't depend on what's underneath.
+**Preference:** Brand red owns actions; danger red means error or revoking. The Revoked and Expired badges were removed when share links moved to status tabs. Use explicit hex for muted surfaces instead of translucent overlays, so contrast doesn't depend on what's underneath.
 
 ### Review step must show the owner it verifies
 **Area:** web/app/routers/repositories.py, web/app/routers/links.py, web/app/templates/share_link.html
@@ -323,7 +323,7 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 ### Revoking must not replace the Share links section
 **Area:** web/app/routers/links.py, web/app/templates/_share_links.html, web/app/templates/share_link_revoked.html, web/app/templates/dashboard.html
 **Obstacle:** Swapping all of `#share-links` after a revoke would remove an unsaved one-time URL card. A revoke could also race an expiry or a second click, and a revoked expired link would report a later end than its real expiry.
-**Solution/Workaround:** `POST /links/{id}/revoke` (HTMX only, create-form CSRF token) sets `revoked_at` with a single conditional `UPDATE`: owned, not revoked, not expired. Otherwise the row is returned unchanged, or 404 for a missing or unowned link. The response swaps only that link's table row and mobile list item out of band, each wrapped in `<template>`. One native dialog sits outside `#share-links` and the access-token check, and carries the CSRF token once. Revoking the link in the one-time card removes the card without asking.
+**Solution/Workaround:** `POST /links/{id}/revoke` (HTMX only, create-form CSRF token) sets `revoked_at` with a single conditional `UPDATE`: owned, not revoked, not expired. Otherwise the list is returned unchanged, or 404 for a missing or unowned link. The list is split into Active, Revoked and Expired ARIA tabs with counts, so a revoke moves the link between tabs: the response re-renders only `#share-link-tabs` out of band, below the card. An `htmx:oobBeforeSwap` listener keeps the selected tab (htmx 2 passes a `DocumentFragment` wrapping the element, so match on `detail.target` and query the fragment), and focus returns to that tab so its new count is announced. Creating a link re-renders the whole section and selects Active. One native dialog sits outside `#share-links` and the access-token check, and carries the CSRF token once. Revoking the link in the one-time card removes the card without asking.
 **Preference:** Revoke never deletes. Share-link macros imported for `url_for` need `with context`. A modal dialog with `block-size: auto` stretches to the viewport; use `fit-content`.
 
 ### Forgejo kept the install-time sslip.io ROOT_URL
