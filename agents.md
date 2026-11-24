@@ -176,11 +176,23 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Solution/Workaround:** Deferred outside the repository-table cleanup. Annotate the mapping with `ClassVar` when addressing this lint issue.
 **Preference:** Do not mix unrelated database cleanup into repository UI changes.
 
-### Create-share-link button points to an unfinished route
-**Area:** web/app/templates/dashboard.html, web/app/routers/links.py
-**Obstacle:** The existing button points to `/links/create`, which has no handler; `POST /links/` is still a 501 stub and the public viewer is not built.
-**Solution/Workaround:** Deferred to the share-link implementation. The user intends to write link creation themselves.
-**Preference:** Keep repository-table cleanup separate from implementing the share-link flow.
+### Link creation must not resolve the branch again
+**Area:** web/app/routers/links.py, web/app/clients/forgejo.py
+**Obstacle:** A branch can move after preview, and a stored PAT can belong to a different Forgejo account.
+**Solution/Workaround:** Match the PAT user ID to the linked identity and repository owner, verify the exact selected SHA, and save only the link token hash. Use a session-bound CSRF token on the browser form; the JSON endpoint only accepts `application/json`.
+**Preference:** Keep the picker preview-only and the public viewer separate. The viewer will need to avoid logging raw share tokens.
+
+### Replacing the picker body loses the selected options
+**Area:** web/app/templates/dashboard.html, web/app/templates/snapshot_picker.html
+**Obstacle:** Swapping review into the picker body removes the loaded repository, branch, and commit controls, so going back would need to reload them.
+**Solution/Workaround:** Swap review into a separate dialog region and keep the picker hidden until Back. On successful creation, swap the Share links table out of band before closing the dialog.
+**Preference:** Preserve selections without refetching, and show the raw share URL only in the creation response.
+
+### Offline uv lock refresh changed unrelated entries
+**Area:** web/uv.lock
+**Obstacle:** The local uv 0.10.7 offline refresh downgraded certifi and rewrote the lockfile revision while removing the unused email extra.
+**Solution/Workaround:** Retained the original certifi entry and lockfile revision, kept only the email dependency removals, and verified with `uv lock --check`.
+**Preference:** Check lockfile diffs for unrelated changes after an offline refresh.
 
 ### Table divider utility has no matching theme token
 **Area:** web/app/templates/dashboard.html, web/app/static/css/input.css
@@ -271,3 +283,39 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Obstacle:** HTMX clears its loading indicator after a failed request without replacing the old branch or commit controls.
 **Solution/Workaround:** Mark the dependent fragment `inert` before sending a request and replace its outer element only when a response swaps. Show an inline error if the old fragment remains after loading.
 **Preference:** Don't allow a stale selection to submit; preserve the dialog's layout during loading and failure.
+
+### Review-step failures bubbled past the review listener
+**Area:** web/app/templates/dashboard.html
+**Obstacle:** HTMX fires request events on the element that sent the request, not on `hx-target`. The Next form lives in the picker body, so a listener on `#snapshot-picker-review` never saw a failed review load, and the dialog showed no error.
+**Solution/Workaround:** Listen for `htmx:responseError` and `htmx:sendError` on the dialog and filter by `detail.target`. Show the create form's error if present, otherwise the separate review-load error.
+**Preference:** Filter dialog-level listeners by target rather than attaching listeners to swap targets.
+
+### JSON link creation bypassed the expiry options
+**Area:** web/app/routers/links.py
+**Obstacle:** The dashboard form only offers 1, 7, or 30 days, but `POST /links/` accepted any future `expires_at`, up to year 9999. An extreme offset such as `9999-12-31T23:59:59-14:00` also passed validation and crashed with `OverflowError` when saved.
+**Solution/Workaround:** `LINK_LIFETIME_DAYS` in `app/models/grant.py` defines the offered lifetimes. The form validates against it and renders its options from it, and `_create_public_link` rejects expirations beyond its maximum, before any UTC conversion.
+**Preference:** Enforce link policy in the shared creation function so every entry point gets it.
+
+### Share-link no-JavaScript fallback was unreachable
+**Area:** web/app/routers/links.py, web/app/templates/share_link.html, web/app/templates/share_links.html
+**Obstacle:** `POST /links/create` rendered full pages for non-HTMX requests. The picker loads every step through HTMX, so the review form can't be reached without JavaScript. That fallback had no double-submit guard and no copy handler (flagged by CodeRabbit on #31).
+**Solution/Workaround:** Removed the full-page branches. The route rejects non-HTMX requests with 400, and both templates are fragments only. API clients use `POST /links/`.
+**Preference:** Don't add no-JS fallbacks to steps that only HTMX can reach.
+
+### Primary buttons borrowed the danger red
+**Area:** web/app/static/css/input.css, web/app/templates/error.html
+**Obstacle:** `.btn-primary` and `.btn-borderless` used `bg-danger`, so "Create link" and the Revoked badge carried the same signal. White on dark `#d93f2d` was 4.47:1, and the dark Revoked badge was 4.3:1. Both are below WCAG AA.
+**Solution/Workaround:** Added `--color-brand` (the logo's `#c62030`, white text 5.75:1) with a hover shade, and pointed primary buttons at it. Danger stays for errors and revocation, with explicit `--color-danger-muted` surfaces and lighter `--color-danger-foreground` (dark 5.5:1, light 4.9:1).
+**Preference:** Brand red owns actions; danger red means error or revoked. Use explicit hex for muted surfaces instead of translucent overlays, so contrast doesn't depend on what's underneath.
+
+### Review step must show the owner it verifies
+**Area:** web/app/routers/repositories.py, web/app/routers/links.py, web/app/templates/share_link.html
+**Obstacle:** The review step showed only the repository name, while the Share links table showed `owner/repo`. The owner was resolved only at creation time, so the user never saw which account the public link would come from.
+**Solution/Workaround:** `preview_snapshot` resolves the owner from the linked identity and shows `owner/repo`. The form posts `repo_owner`, and `_create_public_link` rejects it if the access token's account differs. The link is created for exactly what was reviewed.
+**Preference:** Access-token errors all contain "token". The error re-render keys a "Go to Settings" link off that word instead of a parallel error code; revisit if token messages change.
+
+### One-time share URL needs a leave guard
+**Area:** web/app/templates/dashboard.html, web/app/templates/share_links.html
+**Obstacle:** The share URL is shown once and can't be recovered. Revoke isn't built yet, so losing it before copying means creating a duplicate public link.
+**Solution/Workaround:** `#created-share` counts as saved after a successful Copy link, or after a manual copy while the URL field has focus. Until then, `beforeunload` warns before the page is left, and Done asks for confirmation. Copy link stays on "Copied" once used.
+**Preference:** Guard on the client only; the server never stores the raw token.

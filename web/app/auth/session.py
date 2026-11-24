@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -16,6 +17,13 @@ from app.models.session import Session
 
 SESSION_COOKIE = "firebreak_session"
 SESSION_DURATION_DAYS = 7
+
+
+def share_link_csrf_token(session: Session) -> str:
+    """Bind the share-link form to the current browser session."""
+    return hmac.digest(
+        bytes.fromhex(session.token_hash), b"create-share-link", "sha256"
+    ).hex()
 
 
 async def create_session(

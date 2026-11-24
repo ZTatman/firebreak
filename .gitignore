@@ -22,3 +22,9 @@ web/app/static/css/output.css
 
 # Playwright
 .playwright-mcp/
+
+# Local agent skills
+/.agents/skills/
+/.opencode/skills/
+/.claude/skills/
+/skills-lock.json

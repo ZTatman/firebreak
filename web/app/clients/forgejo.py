@@ -20,6 +20,8 @@ from pydantic import (
 from app.models.app_settings import AppSettings
 
 _LOCAL_HTTP_HOSTS = {"localhost", "127.0.0.1", "::1", "forgejo"}
+# A full SHA-1 or SHA-256 commit ID, as Forgejo returns them (lowercase hex).
+COMMIT_SHA = r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
 
 
 def _authenticated_base_url(value: str) -> httpx.URL:
@@ -90,7 +92,7 @@ class Commit(BaseModel):
 
     id: str = Field(
         validation_alias=AliasChoices("sha", "id"),
-        pattern=r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$",
+        pattern=COMMIT_SHA,
     )
     message: str = Field(
         validation_alias=AliasChoices("message", AliasPath("commit", "message"))
@@ -253,6 +255,47 @@ async def get_commits(
     return _parse_json(response, _COMMITS)
 
 
+async def verify_owned_commit(
+    app_settings: AppSettings,
+    access_token: str,
+    provider_user_id: str,
+    repo: str,
+    commit_sha: str,
+) -> tuple[str, str]:
+    """Verify the PAT owner and exact commit, returning canonical repo names."""
+    user = await get(app_settings, "/api/v1/user", access_token)
+    owner = user.get("login")
+    user_id = user.get("id")
+    if type(user_id) is not int or not isinstance(owner, str) or not owner:
+        raise _malformed_response()
+    if str(user_id) != provider_user_id:
+        raise HTTPException(
+            status_code=403, detail="Use a Forgejo token from your linked account."
+        )
+
+    path = f"/api/v1/repos/{quote(owner, safe='')}/{quote(repo, safe='')}"
+    repository = await get(
+        app_settings, path, access_token, not_found="Repository not found."
+    )
+    repo_owner = repository.get("owner")
+    repo_name = repository.get("name")
+    if not isinstance(repo_owner, dict) or not isinstance(repo_name, str):
+        raise _malformed_response()
+    if repo_owner.get("id") != user_id or repo_name.casefold() != repo.casefold():
+        raise HTTPException(status_code=403, detail="Select a repository you own.")
+
+    commit = await get(
+        app_settings,
+        f"{path}/git/commits/{quote(commit_sha, safe='')}?"
+        f"{httpx.QueryParams({'stat': 'false', 'verification': 'false', 'files': 'false'})}",
+        access_token,
+        not_found="The selected commit was not found in this repository.",
+    )
+    if commit.get("sha") != commit_sha:
+        raise _malformed_response()
+    return owner, repo_name
+
+
 async def post(app_settings: AppSettings, path: str, data: dict) -> dict:
     """Send a POST request to the Forgejo API.
 
@@ -284,14 +327,23 @@ async def post(app_settings: AppSettings, path: str, data: dict) -> dict:
 
 
 async def get(
-    app_settings: AppSettings, path: str, access_token: str
+    app_settings: AppSettings,
+    path: str,
+    access_token: str,
+    *,
+    not_found: str | None = None,
 ) -> dict[str, Any]:
     """Fetch a JSON object from the Forgejo API."""
-    return _parse_json(await _get(app_settings, path, access_token), _OBJECT)
+    response = await _get(app_settings, path, access_token, not_found=not_found)
+    return _parse_json(response, _OBJECT)
 
 
 async def _get(
-    app_settings: AppSettings, path: str, access_token: str
+    app_settings: AppSettings,
+    path: str,
+    access_token: str,
+    *,
+    not_found: str | None = None,
 ) -> httpx.Response:
     """Fetch a response without dropping headers needed for pagination."""
     base_url = _authenticated_base_url(app_settings.forgejo_base_url)
@@ -307,6 +359,8 @@ async def _get(
         )
     if resp.status_code == 200:
         return resp
+    if resp.status_code == 404 and not_found:
+        raise HTTPException(status_code=404, detail=not_found)
     if resp.status_code in {401, 403}:
         detail = (
             "Forgejo rejected the access token. For repository browsing, "

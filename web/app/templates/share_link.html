@@ -1,0 +1,81 @@
+{% from "_icons.html" import icon %}
+<form id="snapshot-review-form"
+      hx-post="{{ url_for('create_link_from_preview').path }}"
+      hx-target="#snapshot-picker-review"
+      hx-sync="#snapshot-picker:drop"
+      hx-disabled-elt="find button[type='submit'], #snapshot-review-back, #open-snapshot-picker, #close-snapshot-picker"
+      aria-labelledby="snapshot-review-title"
+      class="space-y-4">
+  <div class="picker-step">
+    <span class="picker-step-index" aria-hidden="true">4</span>
+    <h3 id="snapshot-review-title" class="text-sm font-semibold" tabindex="-1">Review &amp; create</h3>
+  </div>
+  <div class="callout-warning flex items-start gap-2.5 px-3 py-2.5">
+    {% call icon("mt-0.5 shrink-0 text-warning") %}
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    {% endcall %}
+    <p class="text-sm text-pretty text-foreground">
+      <strong class="font-semibold">This link is public.</strong>
+      Anyone who has it can view this snapshot until it expires, once the snapshot viewer is available.
+    </p>
+  </div>
+  <dl class="snapshot-grid overflow-hidden rounded-md border border-border">
+    <div class="snapshot-cell">
+      <dt class="section-header-subtle">Repository</dt>
+      <dd class="snapshot-value">{{ owner }}/{{ repo }}</dd>
+    </div>
+    <div class="snapshot-cell">
+      <dt class="section-header-subtle">Branch</dt>
+      <dd class="snapshot-value">{{ ref }}</dd>
+    </div>
+    <div class="snapshot-cell">
+      <dt class="section-header-subtle">Commit</dt>
+      <dd class="snapshot-value">{{ commit }}</dd>
+    </div>
+  </dl>
+  <input type="hidden" name="repo_owner" value="{{ owner }}" />
+  <input type="hidden" name="repo_name" value="{{ repo }}" />
+  <input type="hidden" name="ref" value="{{ ref }}" />
+  <input type="hidden" name="commit_sha" value="{{ commit }}" />
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  <div>
+    <label for="share-link-expiration" class="picker-step-label">Expires in</label>
+    <select id="share-link-expiration"
+            name="expires_in"
+            class="picker-select"
+            aria-describedby="share-link-expiry-preview"
+            required>
+      {% for days in lifetime_days %}
+        <option value="{{ days }}"
+                data-expires="{{ expiry_label(days) }}"
+                {% if days == expires_in %}selected{% endif %}>
+          {{ days }} day{{ "s" if days != 1 }}
+        </option>
+      {% endfor %}
+    </select>
+    {# Updated by dashboard.html when the selection changes. #}
+    <p id="share-link-expiry-preview"
+       class="mt-1.5 text-xs text-muted-foreground"
+       aria-live="polite">Expires {{ expiry_label(expires_in) }}</p>
+  </div>
+  <p id="snapshot-review-error"
+     class="input-error"
+     role="alert"
+     {% if not link_error %}hidden{% endif %}>
+    {% if link_error %}
+      {{ link_error }}
+      {% if link_error_in_settings %}
+        <a href="{{ url_for('settings_page').path }}"
+           class="underline underline-offset-2 hover:text-foreground">Go to Settings</a>
+      {% endif %}
+    {% else %}
+      Couldn’t create the link. Check your connection and select Create link again. If it keeps failing, close and reopen this dialog.
+    {% endif %}
+  </p>
+  <div class="picker-actions">
+    <button id="snapshot-review-back" type="button" class="btn btn-sm btn-secondary">Back</button>
+    <button type="submit" class="btn btn-sm btn-primary">Create link</button>
+  </div>
+</form>

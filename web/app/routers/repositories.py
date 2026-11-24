@@ -7,10 +7,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.crypto import decrypt_token
-from app.auth.session import get_current_session
+from app.auth.session import get_current_session, share_link_csrf_token
 from app.clients import forgejo
 from app.deps import get_db
 from app.models.app_settings import AppSettings
+from app.models.grant import DEFAULT_LINK_LIFETIME_DAYS
 from app.models.session import Session as UserBrowserSession
 from app.models.user import LinkedIdentity
 from app.settings import get_app_settings, get_fernet
@@ -64,6 +65,12 @@ async def get_forgejo_owner(
     Raises:
         HTTPException: If the session has no linked Forgejo identity.
     """
+    return (await get_forgejo_identity(sess, db)).provider_username
+
+
+async def get_forgejo_identity(
+    sess: UserBrowserSession, db: AsyncSession
+) -> LinkedIdentity:
     stmt = select(LinkedIdentity).where(
         LinkedIdentity.user_id == sess.user_id, LinkedIdentity.provider == "forgejo"
     )
@@ -74,7 +81,7 @@ async def get_forgejo_owner(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No linked identity for forgejo was found. Please sign-in and try again.",
         )
-    return identity.provider_username
+    return identity
 
 
 @router.get("/repositories")
@@ -135,19 +142,25 @@ PICKER_PAGE_SIZE = 50
 @picker_router.get("/preview", response_class=HTMLResponse)
 async def preview_snapshot(
     request: Request,
-    _session: Annotated[UserBrowserSession, Depends(get_current_session)],
-    repo: Annotated[str, Query(max_length=255)] = "",
-    ref: Annotated[str, Query(max_length=1024)] = "",
-    commit: Annotated[str, Query(pattern=r"^(?:[a-f0-9]{40}|[a-f0-9]{64})?$")] = "",
+    session: Annotated[UserBrowserSession, Depends(get_current_session)],
+    owner: Annotated[str, Depends(get_forgejo_owner)],
+    repo: Annotated[str, Query(min_length=1, max_length=255)],
+    ref: Annotated[str, Query(min_length=1, max_length=1024)],
+    commit: Annotated[str, Query(pattern=forgejo.COMMIT_SHA)],
 ) -> Response:
-    """Render a display-only preview, or clear it when no snapshot is supplied."""
-    confirmed = bool(repo and ref and commit)
+    """Render the dialog's review step without creating a share link."""
     return templates.TemplateResponse(
         request,
-        "snapshot_preview.html",
-        {"repo": repo, "ref": ref, "commit": commit, "confirmed": confirmed},
+        "share_link.html",
+        {
+            "owner": owner,
+            "repo": repo,
+            "ref": ref,
+            "commit": commit,
+            "csrf_token": share_link_csrf_token(session),
+            "expires_in": DEFAULT_LINK_LIFETIME_DAYS,
+        },
         headers={"Cache-Control": "no-store"},
-        block_name="preview_confirmation" if confirmed else "selected_snapshot",
     )
 
 

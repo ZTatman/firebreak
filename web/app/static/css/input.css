@@ -18,6 +18,12 @@
 
     --color-primary: #2a2d31;
 
+    /* The logo's ember red owns primary actions in both themes. Danger is reserved
+       for errors and revocation so the two never read as the same signal. */
+    --color-brand: #c62030;
+    --color-brand-foreground: #ffffff;
+    --color-brand-hover: #a81a28;
+
     --color-secondary: #eeeeea;
     --color-secondary-foreground: #17191c;
 
@@ -36,9 +42,9 @@
     --color-warning-muted: oklch(96.3% 0.052 85);
 
     --color-danger: #b01c2a;
-    --color-danger-foreground: #d94555;
+    --color-danger-foreground: #b8293a;
     --color-danger-hover: #9a1824;
-    --color-danger-muted: rgb(176 28 42 / 10%);
+    --color-danger-muted: #f1e2e2;
 
     --color-expired: #5c5c58;
     --color-expired-foreground: #4b4b47;
@@ -86,9 +92,9 @@
     --color-warning-muted: oklch(35% 0.075 75);
 
     --color-danger: #d93f2d;
-    --color-danger-foreground: #f06a58;
+    --color-danger-foreground: #f5806f;
     --color-danger-hover: #c23625;
-    --color-danger-muted: rgb(240 74 54 / 18%);
+    --color-danger-muted: #3d2427;
 
     --color-expired: #bdb8ad;
     --color-expired-foreground: #d6d0c4;
@@ -145,7 +151,7 @@
     }
 
     .btn-primary {
-        @apply bg-danger text-white hover:bg-danger-hover;
+        @apply bg-brand text-brand-foreground hover:bg-brand-hover;
     }
 
     .btn-secondary {
@@ -153,7 +159,7 @@
     }
 
     .btn-borderless {
-        @apply bg-danger text-white hover:bg-danger-hover;
+        @apply bg-brand text-brand-foreground hover:bg-brand-hover;
     }
 
     .app-header {
@@ -245,6 +251,15 @@
 
     .badge-expired {
         @apply rounded-full bg-expired-muted px-2.5 py-1 text-xs font-medium text-expired-foreground;
+    }
+
+    /* Tinted panels for a status message; layout stays in the markup. */
+    .callout-success {
+        @apply rounded-lg border border-success/45 bg-success-muted/30;
+    }
+
+    .callout-warning {
+        @apply rounded-lg border border-warning/40 bg-warning-muted/30;
     }
 
     .card {
@@ -381,6 +396,11 @@
         overflow: auto;
         overscroll-behavior: contain;
         scrollbar-gutter: stable;
+    }
+
+    #snapshot-picker-review:not(:has(#snapshot-review-form)),
+    .picker-steps:has(#snapshot-review-form) > #snapshot-picker-body {
+        display: none;
     }
 
     .picker-step {
