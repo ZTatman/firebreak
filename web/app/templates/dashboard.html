@@ -107,12 +107,26 @@
           const card = document.getElementById("created-share");
           if (card) card.dataset.saved = "";
         };
+        // Removes the card unless it is unsaved and the user declines; returns whether it is gone.
+        const dismissCreatedShare = (message) => {
+          const card = document.getElementById("created-share");
+          if (!card) return true;
+          if (!("saved" in card.dataset) && !confirm(message)) return false;
+          card.remove();
+          return true;
+        };
+        // Creating another link replaces the share-links section, card included, without
+        // leaving the page. Capture phase runs before htmx's listener on the button, and
+        // cancelling the click also stops the button's show-modal command.
+        document.addEventListener("click", (event) => {
+          if (!event.target.closest("#open-snapshot-picker")) return;
+          if (dismissCreatedShare("You haven’t copied the last link. It can’t be shown again. Discard it and create another?")) return;
+          event.preventDefault();
+          event.stopPropagation();
+        }, true);
         document.addEventListener("click", async (event) => {
           if (event.target.closest("#dismiss-share-url")) {
-            const card = document.getElementById("created-share");
-            if (!("saved" in card.dataset) &&
-                !confirm("You haven’t copied this link. It can’t be shown again. Close it anyway?")) return;
-            card.remove();
+            if (!dismissCreatedShare("You haven’t copied this link. It can’t be shown again. Close it anyway?")) return;
             document.getElementById("share-links-title").focus();
             return;
           }
