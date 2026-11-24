@@ -313,3 +313,9 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Obstacle:** The review step showed only the repository name, while the Share links table showed `owner/repo`. The owner was resolved only at creation time, so the user never saw which account the public link would come from.
 **Solution/Workaround:** `preview_snapshot` resolves the owner from the linked identity and shows `owner/repo`. The form posts `repo_owner`, and `_create_public_link` rejects it if the access token's account differs. The link is created for exactly what was reviewed.
 **Preference:** Access-token errors all contain "token". The error re-render keys a "Go to Settings" link off that word instead of a parallel error code; revisit if token messages change.
+
+### One-time share URL needs a leave guard
+**Area:** web/app/templates/dashboard.html, web/app/templates/share_links.html
+**Obstacle:** The share URL is shown once and can't be recovered. Revoke isn't built yet, so losing it before copying means creating a duplicate public link.
+**Solution/Workaround:** `#created-share` counts as saved after a successful Copy link, or after a manual copy while the URL field has focus. Until then, `beforeunload` warns before the page is left, and Done asks for confirmation. Copy link stays on "Copied" once used.
+**Preference:** Guard on the client only; the server never stores the raw token.

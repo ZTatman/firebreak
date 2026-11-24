@@ -5,10 +5,30 @@
       hx-disabled-elt="find button[type='submit'], #snapshot-review-back, #open-snapshot-picker, #close-snapshot-picker"
       aria-labelledby="snapshot-review-title"
       class="space-y-4">
-  <h3 id="snapshot-review-title" class="text-sm font-semibold" tabindex="-1">Review &amp; create</h3>
-  <p class="text-xs text-muted-foreground">
-    This link is public. Once the viewer is available, anyone with the link can open this snapshot until it expires.
-  </p>
+  <div class="flex items-center gap-3">
+    <span class="picker-step-index" aria-hidden="true">4</span>
+    <h3 id="snapshot-review-title" class="text-sm font-semibold" tabindex="-1">Review &amp; create</h3>
+  </div>
+  <div class="flex items-start gap-2.5 rounded-md border border-warning/40 bg-warning-muted/30 px-3 py-2.5">
+    <svg class="mt-0.5 shrink-0 text-warning"
+         width="16"
+         height="16"
+         viewBox="0 0 24 24"
+         fill="none"
+         stroke="currentColor"
+         stroke-width="2"
+         stroke-linecap="round"
+         stroke-linejoin="round"
+         aria-hidden="true">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </svg>
+    <p class="text-sm text-pretty text-foreground">
+      <strong class="font-semibold">This link is public.</strong>
+      Anyone who has it can view this snapshot until it expires, once the snapshot viewer is available.
+    </p>
+  </div>
   <dl class="snapshot-grid overflow-hidden rounded-md border border-border">
     <div class="snapshot-cell">
       <dt class="section-header-subtle">Repository</dt>
@@ -30,13 +50,23 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
   <div>
     <label for="share-link-expiration" class="picker-step-label">Expires in</label>
-    <select id="share-link-expiration" name="expires_in" class="picker-select" required>
+    <select id="share-link-expiration"
+            name="expires_in"
+            class="picker-select"
+            aria-describedby="share-link-expiry-preview"
+            required>
       {% for days in lifetime_days %}
-        <option value="{{ days }}" {% if days == expires_in %}selected{% endif %}>
+        <option value="{{ days }}"
+                data-expires="{{ expiry_label(days) }}"
+                {% if days == expires_in %}selected{% endif %}>
           {{ days }} day{{ "s" if days != 1 }}
         </option>
       {% endfor %}
     </select>
+    {# Updated by dashboard.html when the selection changes. #}
+    <p id="share-link-expiry-preview"
+       class="mt-1.5 text-xs text-muted-foreground"
+       aria-live="polite">Expires {{ expiry_label(expires_in) }}</p>
   </div>
   <p id="snapshot-review-error"
      class="input-error"
