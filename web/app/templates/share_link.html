@@ -1,3 +1,4 @@
+{% from "_icons.html" import icon %}
 <form id="snapshot-review-form"
       hx-post="{{ url_for('create_link_from_preview').path }}"
       hx-target="#snapshot-picker-review"
@@ -5,25 +6,16 @@
       hx-disabled-elt="find button[type='submit'], #snapshot-review-back, #open-snapshot-picker, #close-snapshot-picker"
       aria-labelledby="snapshot-review-title"
       class="space-y-4">
-  <div class="flex items-center gap-3">
+  <div class="picker-step">
     <span class="picker-step-index" aria-hidden="true">4</span>
     <h3 id="snapshot-review-title" class="text-sm font-semibold" tabindex="-1">Review &amp; create</h3>
   </div>
-  <div class="flex items-start gap-2.5 rounded-md border border-warning/40 bg-warning-muted/30 px-3 py-2.5">
-    <svg class="mt-0.5 shrink-0 text-warning"
-         width="16"
-         height="16"
-         viewBox="0 0 24 24"
-         fill="none"
-         stroke="currentColor"
-         stroke-width="2"
-         stroke-linecap="round"
-         stroke-linejoin="round"
-         aria-hidden="true">
+  <div class="callout-warning flex items-start gap-2.5 px-3 py-2.5">
+    {% call icon("mt-0.5 shrink-0 text-warning") %}
       <circle cx="12" cy="12" r="10" />
       <path d="M2 12h20" />
       <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-    </svg>
+    {% endcall %}
     <p class="text-sm text-pretty text-foreground">
       <strong class="font-semibold">This link is public.</strong>
       Anyone who has it can view this snapshot until it expires, once the snapshot viewer is available.

@@ -56,3 +56,8 @@ class Grant(Base):
         if self.expires_at <= datetime.now(UTC):
             return "expired"
         return "active"
+
+    @property
+    def ends_at(self) -> datetime:
+        """When access ends: the revocation time, else the scheduled expiry."""
+        return self.revoked_at or self.expires_at

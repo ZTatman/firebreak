@@ -107,7 +107,6 @@ async def create_link_from_preview(
                 "ref": ref,
                 "commit": commit_sha,
                 "csrf_token": csrf_token,
-                "lifetime_days": LINK_LIFETIME_DAYS,
                 "expires_in": expires_in,
                 "link_error": exc.detail,
                 # Every access-token failure says "token"; those are fixed in Settings.

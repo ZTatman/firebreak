@@ -102,11 +102,10 @@
         // The one-time URL can't be shown again. Until it is copied (by the button or
         // by hand) or dismissed with Done, leaving the page asks for confirmation.
         // The share-links section is replaced after creation, so delegate from the document.
+        // One flag: data-saved on the card also switches the button to "Copied" (CSS).
         const markShareUrlSaved = () => {
           const card = document.getElementById("created-share");
-          if (!card) return;
-          card.dataset.saved = "";
-          document.getElementById("copy-share-url").dataset.copied = "";
+          if (card) card.dataset.saved = "";
         };
         document.addEventListener("click", async (event) => {
           if (event.target.closest("#dismiss-share-url")) {

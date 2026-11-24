@@ -5,9 +5,15 @@ from pathlib import Path
 
 from jinja2_fragments.fastapi import Jinja2Blocks
 
+from app.models.grant import LINK_LIFETIME_DAYS
+
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 templates = Jinja2Blocks(directory=str(TEMPLATES_DIR))
+
+
+def _plural(count: int, word: str) -> str:
+    return f"{count} {word}{'' if count == 1 else 's'}"
 
 
 def relative_time(moment: datetime, now: datetime | None = None) -> str:
@@ -17,30 +23,40 @@ def relative_time(moment: datetime, now: datetime | None = None) -> str:
     Future spans of a day or more also name the leftover hours ("in 6 days 23 hours").
     """
     seconds = (moment - (now or datetime.now(UTC))).total_seconds()
-    span = abs(seconds)
-    for unit, size in (("day", 86400), ("hour", 3600), ("minute", 60)):
-        if span >= size:
-            count = int(span // size)
-            break
+    days, rest = divmod(int(abs(seconds)), 86400)
+    hours, rest = divmod(rest, 3600)
+    minutes = rest // 60
+    if days:
+        label = _plural(days, "day")
+        if seconds > 0 and hours:
+            label += " " + _plural(hours, "hour")
+    elif hours:
+        label = _plural(hours, "hour")
+    elif minutes:
+        label = _plural(minutes, "minute")
     else:
         return "just now"
+    return f"in {label}" if seconds > 0 else f"{label} ago"
 
-    def plural(n: int, word: str) -> str:
-        return f"{n} {word}{'' if n == 1 else 's'}"
 
-    label = plural(count, unit)
-    if seconds < 0:
-        return f"{label} ago"
-    hours = int(span % 86400 // 3600)
-    if unit == "day" and hours:
-        label += " " + plural(hours, "hour")
-    return f"in {label}"
+def utc_datetime(moment: datetime) -> str:
+    """Format an instant for display, e.g. "Nov 30, 2026 23:59 UTC"."""
+    return moment.astimezone(UTC).strftime("%b %d, %Y %H:%M UTC")
+
+
+def utc_date(moment: datetime) -> str:
+    """Format an instant's UTC date, e.g. "Nov 30, 2026"."""
+    return moment.astimezone(UTC).strftime("%b %d, %Y")
 
 
 def expiry_label(days: int) -> str:
-    """When a link created now with this lifetime would expire, in the table's format."""
-    return (datetime.now(UTC) + timedelta(days=days)).strftime("%b %d, %Y %H:%M UTC")
+    """When a link created now with this lifetime would expire."""
+    return utc_datetime(datetime.now(UTC) + timedelta(days=days))
 
 
-templates.env.filters["relative_time"] = relative_time
-templates.env.globals["expiry_label"] = expiry_label
+templates.env.filters.update(
+    relative_time=relative_time, utc_datetime=utc_datetime, utc_date=utc_date
+)
+templates.env.globals.update(
+    expiry_label=expiry_label, lifetime_days=LINK_LIFETIME_DAYS
+)

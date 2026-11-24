@@ -1,3 +1,4 @@
+{% from "_icons.html" import icon %}
 {% macro status_badge(link) -%}
   {%- if link.status == "revoked" -%}
     <span class="badge-danger">Revoked</span>
@@ -7,17 +8,11 @@
     <span class="badge-success">Active</span>
   {%- endif -%}
 {%- endmacro %}
-{% macro timestamp(moment, fmt) -%}
-  <time datetime="{{ moment.isoformat() }}">{{ moment.strftime(fmt) }}</time>
+{% macro timestamp(moment, with_time=false) -%}
+  <time datetime="{{ moment.isoformat() }}">{{ moment | utc_datetime if with_time else moment | utc_date }}</time>
 {%- endmacro %}
 {% macro lifetime(link) -%}
-  {%- if link.status == "revoked" -%}
-    Revoked {{ link.revoked_at | relative_time }}
-  {%- elif link.status == "expired" -%}
-    Expired {{ link.expires_at | relative_time }}
-  {%- else -%}
-    Expires {{ link.expires_at | relative_time }}
-  {%- endif -%}
+  {{ {"revoked": "Revoked", "expired": "Expired"}.get(link.status, "Expires") }} {{ link.ends_at | relative_time }}
 {%- endmacro %}
 <section id="share-links"
          class="space-y-3"
@@ -27,23 +22,14 @@
   {% if created_link %}
     {# dashboard.html guards this card: copying or Done marks it saved; leaving before that warns. #}
     <div id="created-share"
-         class="space-y-4 rounded-lg border border-success/45 bg-success-muted/30 p-4 sm:p-5"
+         class="group/card callout-success space-y-4 p-4 sm:p-5"
          role="group"
          aria-labelledby="created-share-title">
       <div class="flex items-start gap-3">
-        <svg class="mt-0.5 shrink-0 text-success"
-             width="20"
-             height="20"
-             viewBox="0 0 24 24"
-             fill="none"
-             stroke="currentColor"
-             stroke-width="2"
-             stroke-linecap="round"
-             stroke-linejoin="round"
-             aria-hidden="true">
+        {% call icon("mt-0.5 shrink-0 text-success", 20) %}
           <circle cx="12" cy="12" r="10" />
           <path d="m9 12 2 2 4-4" />
-        </svg>
+        {% endcall %}
         <div class="space-y-1">
           <h3 id="created-share-title" class="text-sm font-semibold text-foreground">Link created</h3>
           <p id="created-share-notice" class="text-sm font-medium text-foreground">
@@ -62,34 +48,17 @@
                spellcheck="false"
                readonly />
         <div class="flex gap-2">
-          <button id="copy-share-url" type="button" class="group btn btn-sm btn-primary flex-1 sm:flex-none">
-            <svg class="group-data-copied:hidden"
-                 width="16"
-                 height="16"
-                 viewBox="0 0 24 24"
-                 fill="none"
-                 stroke="currentColor"
-                 stroke-width="2"
-                 stroke-linecap="round"
-                 stroke-linejoin="round"
-                 aria-hidden="true">
+          {# Shows "Copied" once the card is marked saved (data-saved, set by dashboard.html). #}
+          <button id="copy-share-url" type="button" class="btn btn-sm btn-primary flex-1 sm:flex-none">
+            {% call icon("group-data-saved/card:hidden") %}
               <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
               <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-            </svg>
-            <svg class="hidden group-data-copied:block"
-                 width="16"
-                 height="16"
-                 viewBox="0 0 24 24"
-                 fill="none"
-                 stroke="currentColor"
-                 stroke-width="2"
-                 stroke-linecap="round"
-                 stroke-linejoin="round"
-                 aria-hidden="true">
+            {% endcall %}
+            {% call icon("hidden group-data-saved/card:block") %}
               <path d="M20 6 9 17l-5-5" />
-            </svg>
-            <span class="group-data-copied:hidden">Copy link</span>
-            <span class="hidden group-data-copied:inline">Copied</span>
+            {% endcall %}
+            <span class="group-data-saved/card:hidden">Copy link</span>
+            <span class="hidden group-data-saved/card:inline">Copied</span>
           </button>
           <button id="dismiss-share-url" type="button" class="btn btn-sm btn-secondary">Done</button>
         </div>
@@ -119,11 +88,10 @@
               <th scope="row" class="px-4 py-3 font-medium">{{ link.repo_owner }}/{{ link.repo_name }}</th>
               <td class="px-4 py-3 font-mono text-xs" title="{{ link.commit_sha }}">{{ link.commit_sha[:12] }}</td>
               <td class="px-4 py-3">{{ status_badge(link) }}</td>
-              <td class="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">{{ timestamp(link.created_at, "%b %d, %Y") }}</td>
+              <td class="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">{{ timestamp(link.created_at) }}</td>
               <td class="whitespace-nowrap px-4 py-3">
                 <span class="block text-sm">{{ lifetime(link) }}</span>
-                {# A revoked link's end is when it was revoked, not its original expiry. #}
-                <span class="block text-xs text-muted-foreground">{{ timestamp(link.revoked_at if link.status == "revoked" else link.expires_at, "%b %d, %Y %H:%M %Z") }}</span>
+                <span class="block text-xs text-muted-foreground">{{ timestamp(link.ends_at, with_time=true) }}</span>
               </td>
             </tr>
           {% endfor %}
@@ -140,7 +108,7 @@
           <p class="text-sm">{{ lifetime(link) }}</p>
           <p class="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
             <span class="font-mono" title="{{ link.commit_sha }}">{{ link.commit_sha[:12] }}</span>
-            <span>Created {{ timestamp(link.created_at, "%b %d, %Y") }}</span>
+            <span>Created {{ timestamp(link.created_at) }}</span>
           </p>
         </li>
       {% endfor %}

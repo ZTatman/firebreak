@@ -253,6 +253,15 @@
         @apply rounded-full bg-expired-muted px-2.5 py-1 text-xs font-medium text-expired-foreground;
     }
 
+    /* Tinted panels for a status message; layout stays in the markup. */
+    .callout-success {
+        @apply rounded-lg border border-success/45 bg-success-muted/30;
+    }
+
+    .callout-warning {
+        @apply rounded-lg border border-warning/40 bg-warning-muted/30;
+    }
+
     .card {
         @apply rounded-lg border border-border bg-card text-card-foreground;
         box-shadow: var(--shadow-card);
