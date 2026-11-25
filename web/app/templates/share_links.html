@@ -1,27 +1,15 @@
 {% from "_icons.html" import icon %}
-{% macro status_badge(link) -%}
-  {%- if link.status == "revoked" -%}
-    <span class="badge-danger">Revoked</span>
-  {%- elif link.status == "expired" -%}
-    <span class="badge-expired">Expired</span>
-  {%- else -%}
-    <span class="badge-success">Active</span>
-  {%- endif -%}
-{%- endmacro %}
-{% macro timestamp(moment, with_time=false) -%}
-  <time datetime="{{ moment.isoformat() }}">{{ moment | utc_datetime if with_time else moment | utc_date }}</time>
-{%- endmacro %}
-{% macro lifetime(link) -%}
-  {{ {"revoked": "Revoked", "expired": "Expired"}.get(link.status, "Expires") }} {{ link.ends_at | relative_time }}
-{%- endmacro %}
+{% from "_share_links.html" import tabs with context %}
 <section id="share-links"
          class="space-y-3"
          aria-labelledby="share-links-title"
          {% if out_of_band %}hx-swap-oob="outerHTML"{% endif %}>
   <h2 id="share-links-title" class="text-base font-semibold" tabindex="-1">Share links</h2>
   {% if created_link %}
-    {# dashboard.html guards this card: copying or Done marks it saved; leaving before that warns. #}
+    {# dashboard.html guards this card: copying or Done marks it saved; leaving before that warns.
+       Revoking this link removes the card, since the URL no longer opens anything. #}
     <div id="created-share"
+         data-link-id="{{ created_link_id }}"
          class="group/card callout-success space-y-4 p-4 sm:p-5"
          role="group"
          aria-labelledby="created-share-title">
@@ -66,54 +54,5 @@
       <p id="copy-share-url-status" class="sr-only text-xs text-foreground/75" role="status"></p>
     </div>
   {% endif %}
-  {% if share_links %}
-    {# Newest first, so the first entry is the link just created. #}
-    <div class="card hidden overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:block"
-         tabindex="0"
-         role="region"
-         aria-labelledby="share-links-title">
-      <table class="w-full min-w-180 text-left text-sm">
-        <thead class="bg-muted text-xs font-semibold uppercase tracking-[0.05em] text-muted-foreground">
-          <tr>
-            <th scope="col" class="px-4 py-3">Repository</th>
-            <th scope="col" class="px-4 py-3">Commit</th>
-            <th scope="col" class="px-4 py-3">Status</th>
-            <th scope="col" class="px-4 py-3">Created</th>
-            <th scope="col" class="px-4 py-3">Expires</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-border">
-          {% for link in share_links %}
-            <tr {% if created_link and loop.first %}class="bg-success-muted/25"{% endif %}>
-              <th scope="row" class="px-4 py-3 font-medium">{{ link.repo_owner }}/{{ link.repo_name }}</th>
-              <td class="px-4 py-3 font-mono text-xs" title="{{ link.commit_sha }}">{{ link.commit_sha[:12] }}</td>
-              <td class="px-4 py-3">{{ status_badge(link) }}</td>
-              <td class="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">{{ timestamp(link.created_at) }}</td>
-              <td class="whitespace-nowrap px-4 py-3">
-                <span class="block text-sm">{{ lifetime(link) }}</span>
-                <span class="block text-xs text-muted-foreground">{{ timestamp(link.ends_at, with_time=true) }}</span>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <ul class="card divide-y divide-border sm:hidden" aria-labelledby="share-links-title">
-      {% for link in share_links %}
-        <li class="space-y-1.5 px-4 py-3 {% if created_link and loop.first %}bg-success-muted/25{% endif %}">
-          <div class="flex items-start justify-between gap-3">
-            <span class="min-w-0 break-words font-medium">{{ link.repo_owner }}/{{ link.repo_name }}</span>
-            <span class="shrink-0">{{ status_badge(link) }}</span>
-          </div>
-          <p class="text-sm">{{ lifetime(link) }}</p>
-          <p class="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-            <span class="font-mono" title="{{ link.commit_sha }}">{{ link.commit_sha[:12] }}</span>
-            <span>Created {{ timestamp(link.created_at) }}</span>
-          </p>
-        </li>
-      {% endfor %}
-    </ul>
-  {% else %}
-    <p class="card px-4 py-5 text-center text-sm text-muted-foreground">No share links created yet.</p>
-  {% endif %}
+  {{ tabs(share_links, highlight_id=created_link_id) }}
 </section>

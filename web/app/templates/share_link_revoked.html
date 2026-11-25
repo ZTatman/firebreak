@@ -1,0 +1,4 @@
+{% from "_share_links.html" import tabs with context %}
+{# Re-renders only the status tabs, so the revoked link moves to Revoked and the tab
+   counts update, while an unsaved one-time URL card above them stays. #}
+{{ tabs(share_links, out_of_band=true) }}

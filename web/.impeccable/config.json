@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "geist",
+        "createdAt": "2026-11-24T18:11:18.275Z",
+        "reason": "Project design system: AGENTS.md 'Boilerplate UI must follow attached light vault system' specifies Geist/JetBrains Mono typography"
+      }
+    ]
+  }
+}

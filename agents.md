@@ -102,7 +102,7 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Area:** web/app/templates/base.html, web/app/templates/index.html, web/app/static/css/input.css
 **Obstacle:** The inline Firebreak header wordmark uses hardcoded SVG fills, and page-level header rules can accidentally apply icon `stroke` styles to the brand SVG. On forced-dark landing headers, the `#17191C` wordmark fill disappears against the obsidian nav.
 **Solution/Workaround:** Give the header brand link a stable `brand-link` class, prevent inherited SVG strokes on `.brand-link svg`, and override only the hardcoded wordmark fill in dark contexts or forced-dark page headers.
-**Preference:** Scope icon stroke rules to nav icons; do not apply broad `header svg` stroke styles.
+**Preference:** Scope icon stroke rules to nav icons; do not apply broad `header svg` stroke styles. Below `sm` the wordmark is hidden and only the mark shows, so the signed-in nav fits at 320px without horizontal scroll.
 
 ### Landing video poster caused logo flash
 **Area:** web/app/templates/index.html, web/app/static/img/
@@ -306,7 +306,7 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Area:** web/app/static/css/input.css, web/app/templates/error.html
 **Obstacle:** `.btn-primary` and `.btn-borderless` used `bg-danger`, so "Create link" and the Revoked badge carried the same signal. White on dark `#d93f2d` was 4.47:1, and the dark Revoked badge was 4.3:1. Both are below WCAG AA.
 **Solution/Workaround:** Added `--color-brand` (the logo's `#c62030`, white text 5.75:1) with a hover shade, and pointed primary buttons at it. Danger stays for errors and revocation, with explicit `--color-danger-muted` surfaces and lighter `--color-danger-foreground` (dark 5.5:1, light 4.9:1).
-**Preference:** Brand red owns actions; danger red means error or revoked. Use explicit hex for muted surfaces instead of translucent overlays, so contrast doesn't depend on what's underneath.
+**Preference:** Brand red owns actions; danger red means error or revoking. The Revoked and Expired badges were removed when share links moved to status tabs. Use explicit hex for muted surfaces instead of translucent overlays, so contrast doesn't depend on what's underneath.
 
 ### Review step must show the owner it verifies
 **Area:** web/app/routers/repositories.py, web/app/routers/links.py, web/app/templates/share_link.html
@@ -316,6 +316,30 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 
 ### One-time share URL needs a leave guard
 **Area:** web/app/templates/dashboard.html, web/app/templates/share_links.html
-**Obstacle:** The share URL is shown once and can't be recovered. Revoke isn't built yet, so losing it before copying means creating a duplicate public link.
-**Solution/Workaround:** `#created-share` counts as saved after a successful Copy link, or after a manual copy while the URL field has focus. Until then, `beforeunload` warns before the page is left, and Done asks for confirmation. Copy link stays on "Copied" once used.
+**Obstacle:** The share URL is shown once and can't be recovered. Losing it before copying means creating another public link and revoking the lost one.
+**Solution/Workaround:** `#created-share` counts as saved after a successful Copy link, or after a manual copy while the URL field has focus. Until then, `beforeunload` warns before the page is left, and Done asks for confirmation. Creating another link replaces the card through an out-of-band swap without leaving the page, so "Create a link" asks the same way before the picker opens. A capture-phase click listener cancels both htmx and the `show-modal` command. Copy link stays on "Copied" once used.
 **Preference:** Guard on the client only; the server never stores the raw token.
+
+### Revoking must not replace the Share links section
+**Area:** web/app/routers/links.py, web/app/templates/_share_links.html, web/app/templates/share_link_revoked.html, web/app/templates/dashboard.html
+**Obstacle:** Swapping all of `#share-links` after a revoke would remove an unsaved one-time URL card. A revoke could also race an expiry or a second click, and a revoked expired link would report a later end than its real expiry.
+**Solution/Workaround:** `POST /links/{id}/revoke` (HTMX only, create-form CSRF token) sets `revoked_at` with a single conditional `UPDATE`: owned, not revoked, not expired. Otherwise the list is returned unchanged, or 404 for a missing or unowned link. The list is split into Active, Revoked and Expired ARIA tabs with counts, so a revoke moves the link between tabs: the response re-renders only `#share-link-tabs` out of band, below the card. An `htmx:oobBeforeSwap` listener keeps the selected tab (htmx 2 passes a `DocumentFragment` wrapping the element, so match on `detail.target` and query the fragment), and focus returns to that tab so its new count is announced. Creating a link re-renders the whole section and selects Active. The result shows in `#share-links-toast`, which stays in the page as the live region; the trigger's `revoked` flag picks a check (revoked now) or info icon (already revoked or expired). Failures keep the dialog open, and Escape can't close it mid-request. They name the cause by status: 401 signed out, 403 session, 404 missing, network, other. Only 401, 403 and 404 say the link is still active, since they fail before the `UPDATE`. A network error or other failure can follow a saved revoke, so those say the result couldn't be confirmed and suggest reloading or retrying; a retry keeps the first `revoked_at`. One native dialog sits outside `#share-links` and the access-token check, and carries the CSRF token once. Revoking the link in the one-time card removes the card without asking.
+**Preference:** Revoke never deletes. Share-link macros imported for `url_for` need `with context`. A modal dialog with `block-size: auto` stretches to the viewport; use `fit-content`.
+
+### Forgejo kept the install-time sslip.io ROOT_URL
+**Area:** Forgejo deployment (Dokploy), OAuth sign-in
+**Obstacle:** Forgejo was installed on Dokploy's generated `…sslip.io` domain, so `app.ini` kept that `ROOT_URL` after `git.firebreak.build` was added. Forgejo showed a ROOT_URL mismatch warning and OAuth2 sign-in from Firebreak was unreliable.
+**Solution/Workaround:** Set `FORGEJO__server__ROOT_URL=https://git.firebreak.build/` (plus `DOMAIN` and `SSH_DOMAIN`) in the Forgejo service's Dokploy environment and redeploy.
+**Preference:** Keep the setting in Dokploy's environment rather than editing `app.ini` in the volume, so a redeploy can't revert it.
+
+### Impeccable keeps a config per monorepo project
+**Area:** .impeccable/, web/.impeccable/
+**Obstacle:** Firebreak is a pnpm monorepo, so Impeccable treats `web/` as its own project for files under it. The design hook then reads only `web/.impeccable/config.json`, not the root config. Deleting `web/.impeccable/` to consolidate made the hook re-flag Geist on `base.html`.
+**Solution/Workaround:** Keep both configs and their detector ignores in step: `web/.impeccable/config.json` governs the web app's templates, and the root `.impeccable/config.json` covers runs that resolve to the repo root. Write ignores with `impeccable hooks ignore-value` from the matching directory. Critique snapshots follow the working directory; run critiques from the repo root to keep one history in `.impeccable/critique/`.
+**Preference:** Commit both `config.json` files; leave `config.local.json`, `hook.cache.json` and `critique/` untracked.
+
+### Worktrees from before the rename could not be removed
+**Area:** git worktrees (`~/.codex/worktrees/*/embargo`)
+**Obstacle:** Worktrees created while the repo was at `Projects/embargo` kept `.git` files pointing there. `git worktree remove` failed with "is not a .git file", and `git worktree list` kept listing them.
+**Solution/Workaround:** Run `git worktree repair <path>` for each worktree (one path per call; zsh does not word-split an unquoted variable), confirm `git -C <path> status` is clean, then `git worktree remove <path>` and `git worktree prune`.
+**Preference:** Repair, then remove, rather than deleting directories by hand, so git's metadata stays in step.

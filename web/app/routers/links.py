@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import json
 import secrets
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -10,7 +11,7 @@ import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
@@ -59,7 +60,7 @@ async def create_link(
     content_type = request.headers.get("content-type", "").partition(";")[0]
     if content_type.strip().lower() != "application/json":
         raise HTTPException(status_code=415, detail="Use application/json.")
-    result = await _create_public_link(link, session, db, app_settings)
+    _, result = await _create_public_link(link, session, db, app_settings)
     response.headers.update(_NO_STORE)
     return result
 
@@ -78,12 +79,13 @@ async def create_link_from_preview(
     csrf_token: Annotated[str, Form(max_length=64)],
 ) -> Response:
     # The picker only works through HTMX, so this route only serves its fragments.
-    if request.headers.get("HX-Request") != "true":
-        raise HTTPException(status_code=400, detail="Create links from the dashboard.")
-    if not hmac.compare_digest(
-        csrf_token.encode(), share_link_csrf_token(session).encode()
-    ):
-        raise HTTPException(status_code=403, detail="Reopen the picker and try again.")
+    _check_dashboard_form(
+        request,
+        session,
+        csrf_token,
+        wrong_place="Create links from the dashboard.",
+        bad_token="Reopen the picker and try again.",
+    )
     if expires_in not in LINK_LIFETIME_DAYS:
         raise HTTPException(status_code=422, detail="Choose a listed expiration.")
 
@@ -96,7 +98,9 @@ async def create_link_from_preview(
         expires_at=datetime.now(UTC) + timedelta(days=expires_in),
     )
     try:
-        created_link = await _create_public_link(link, session, db, app_settings)
+        created_link_id, created_link = await _create_public_link(
+            link, session, db, app_settings
+        )
     except HTTPException as exc:
         return templates.TemplateResponse(
             request,
@@ -123,11 +127,99 @@ async def create_link_from_preview(
         {
             "share_links": await list_share_links(db, session.user_id),
             "created_link": created_link,
+            "created_link_id": created_link_id,
             "out_of_band": True,
         },
         headers={**_NO_STORE, "HX-Trigger-After-Settle": "share-link-created"},
         status_code=201,
     )
+
+
+@router.post("/{link_id}/revoke", response_class=HTMLResponse, include_in_schema=False)
+async def revoke_link(
+    request: Request,
+    link_id: UUID,
+    session: Annotated[UserBrowserSession, Depends(get_current_session)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    csrf_token: Annotated[str, Form(max_length=64)],
+) -> Response:
+    # The dashboard's confirmation dialog only works through HTMX, and carries the
+    # same session-bound token as the create form.
+    _check_dashboard_form(
+        request,
+        session,
+        csrf_token,
+        wrong_place="Revoke links from the dashboard.",
+        bad_token="Reload the page and try again.",
+    )
+
+    # One statement, so a link that expires or is revoked in the meantime is left
+    # alone: an earlier revocation time is kept, and expired links keep ending at
+    # their expiry. The app's clock, not the database's, so the update, the message
+    # and the tabs (Grant.status) all agree on whether the link had expired.
+    now = datetime.now(UTC)
+    revoked_id = await db.scalar(
+        update(Grant)
+        .where(
+            Grant.id == link_id,
+            Grant.user_id == session.user_id,
+            Grant.revoked_at.is_(None),
+            Grant.expires_at > now,
+        )
+        .values(revoked_at=now)
+        .returning(Grant.id)
+    )
+    await db.commit()
+
+    # The response re-renders the whole list anyway, so the link is found in it.
+    share_links = await list_share_links(db, session.user_id)
+    link = next((link for link in share_links if link.id == link_id), None)
+    if link is None:
+        # Also for another user's link, so its existence isn't revealed.
+        raise HTTPException(status_code=404, detail="Share link not found.")
+
+    if revoked_id is not None:
+        message = "Share link revoked."
+    elif link.status_at(now) == "revoked":
+        message = "This share link was already revoked."
+    else:
+        message = "This share link has already expired."
+    return templates.TemplateResponse(
+        request,
+        "share_link_revoked.html",
+        # The whole list, since the link moves from Active to Revoked.
+        {"share_links": share_links},
+        headers={
+            **_NO_STORE,
+            "HX-Trigger-After-Settle": json.dumps(
+                {
+                    "share-link-revoked": {
+                        "id": str(link.id),
+                        "message": message,
+                        # False when it was already revoked or expired: nothing changed.
+                        "revoked": revoked_id is not None,
+                    }
+                }
+            ),
+        },
+    )
+
+
+def _check_dashboard_form(
+    request: Request,
+    session: UserBrowserSession,
+    csrf_token: str,
+    *,
+    wrong_place: str,
+    bad_token: str,
+) -> None:
+    """Reject a dashboard form post that isn't from HTMX or lacks the session's token."""
+    if request.headers.get("HX-Request") != "true":
+        raise HTTPException(status_code=400, detail=wrong_place)
+    if not hmac.compare_digest(
+        csrf_token.encode(), share_link_csrf_token(session).encode()
+    ):
+        raise HTTPException(status_code=403, detail=bad_token)
 
 
 async def list_share_links(db: AsyncSession, user_id: UUID) -> Sequence[Grant]:
@@ -154,7 +246,8 @@ async def _create_public_link(
     session: UserBrowserSession,
     db: AsyncSession,
     app_settings: AppSettings,
-) -> CreateLinkResponse:
+) -> tuple[UUID, CreateLinkResponse]:
+    """Save a public link; return its ID and the one-time share URL."""
     if link.repo_name in {".", ".."}:
         raise HTTPException(status_code=400, detail="Invalid repository name.")
     now = datetime.now(UTC)
@@ -192,6 +285,9 @@ async def _create_public_link(
         link.repo_name,
         link.commit_sha,
     )
+    # The Forgejo API returns the owner of the commit, which may differ from the
+    # user-supplied owner. If the user supplied an owner, it must match the
+    # Forgejo result, or the link is for a repository the user doesn't own.
     if link.repo_owner is not None and link.repo_owner.casefold() != owner.casefold():
         raise HTTPException(status_code=403, detail="Select a repository you own.")
     # Check again: the Forgejo requests above can outlast a near-term expiration.
@@ -199,19 +295,19 @@ async def _create_public_link(
         raise HTTPException(status_code=400, detail="Choose a future expiration.")
 
     token = secrets.token_urlsafe(32)
-    db.add(
-        Grant(
-            token_hash=hashlib.sha256(token.encode()).hexdigest(),
-            user_id=session.user_id,
-            expires_at=link.expires_at,
-            repo_owner=owner,
-            repo_name=repo,
-            commit_sha=link.commit_sha,
-            grant_type="public",
-        )
+    grant = Grant(
+        token_hash=hashlib.sha256(token.encode()).hexdigest(),
+        user_id=session.user_id,
+        expires_at=link.expires_at,
+        repo_owner=owner,
+        repo_name=repo,
+        commit_sha=link.commit_sha,
+        grant_type="public",
     )
+    db.add(grant)
+    # The insert returns the generated ID, which stays loaded after commit.
     await db.commit()
-    return CreateLinkResponse(
+    return grant.id, CreateLinkResponse(
         expires_at=link.expires_at,
         commit_sha=link.commit_sha,
         share_url=f"{str(base_url).rstrip('/')}/share/{token}",

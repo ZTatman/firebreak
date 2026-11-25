@@ -14,7 +14,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 
 from app import models as _models  # noqa: F401 - register ORM tables on metadata
-from app.auth.session import get_current_session, get_optional_session
+from app.auth.session import (
+    get_current_session,
+    get_optional_session,
+    share_link_csrf_token,
+)
 from app.clients import forgejo
 from app.database import Base
 from app.deps import get_db
@@ -181,6 +185,8 @@ async def dashboard(
             "user": sess.user,
             "pat_registered": sess.user.has_pat,
             "share_links": await links.list_share_links(db, sess.user_id),
+            # Revoking a share link is session-bound, like creating one.
+            "csrf_token": share_link_csrf_token(sess),
             "repos": repos,
             "repo_error": repo_error,
             "repo_page": page,

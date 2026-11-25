@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Dashboard — Firebreak{% endblock %}
 {% block content %}
   <div class="flex flex-col gap-6">
@@ -167,6 +168,203 @@
       </script>
     {% endif %}
     {% include "share_links.html" %}
+    {# Outside #share-links, which is replaced after creating a link, and outside the
+       access-token check: revoking only needs the Firebreak session. #}
+    {# Revoke result for everyone: the toast is the live region, so it stays in the page
+       and only its text and data-open change. #}
+    <div id="share-links-toast" class="toast" role="status">
+      {% call icon("toast-icon-done mt-0.5 shrink-0 text-success", 18) %}
+        <circle cx="12" cy="12" r="10" />
+        <path d="m9 12 2 2 4-4" />
+      {% endcall %}
+      {% call icon("toast-icon-info mt-0.5 shrink-0 text-muted-foreground", 18) %}
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 16v-4" />
+        <path d="M12 8h.01" />
+      {% endcall %}
+      <div class="min-w-0 flex-1 space-y-0.5">
+        <p id="share-links-toast-message" class="font-medium"></p>
+        <p id="share-links-toast-target"
+           class="font-mono text-xs break-words text-muted-foreground"></p>
+      </div>
+      <button id="share-links-toast-close"
+              type="button"
+              class="picker-close -m-2 size-11"
+              aria-label="Dismiss">
+        {% call icon() %}
+          <path d="M18 6 6 18" />
+          <path d="m6 6 12 12" />
+        {% endcall %}
+      </button>
+    </div>
+    <dialog id="revoke-share-link"
+            class="picker-dialog confirm-dialog"
+            aria-labelledby="revoke-share-link-title"
+            aria-describedby="revoke-share-link-description">
+      {# method="dialog" only closes the dialog if htmx hasn't taken over the form yet. #}
+      <form id="revoke-share-link-form"
+            method="dialog"
+            hx-swap="none"
+            hx-disabled-elt="#revoke-share-link-form button"
+            class="space-y-4 p-6">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <div class="space-y-1">
+          <h2 id="revoke-share-link-title" class="picker-title">Revoke this share link?</h2>
+          <p id="revoke-share-link-target" class="font-mono text-xs text-muted-foreground"></p>
+          {# Created date and time left: tells apart two links to the same commit. #}
+          <p id="revoke-share-link-detail" class="text-xs text-muted-foreground"></p>
+        </div>
+        <p id="revoke-share-link-description" class="text-sm text-pretty">
+          People with this link will no longer be able to open it through Firebreak. This takes effect immediately and can’t be undone. It can’t take back anything already copied.
+        </p>
+        {# Text set by the script below, from the failure. #}
+        <p id="revoke-share-link-error" class="input-error" role="alert" hidden></p>
+        <div class="picker-actions">
+          <button type="button"
+                  class="btn btn-sm btn-secondary"
+                  commandfor="revoke-share-link"
+                  command="close">Cancel</button>
+          {# htmx marks the form with .htmx-request while revoking. #}
+          <button type="submit" class="btn btn-sm btn-danger">
+            <span class="in-[.htmx-request]:hidden">Revoke link</span>
+            <span class="hidden in-[.htmx-request]:inline">Revoking…</span>
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <script>
+      {
+        const dialog = document.getElementById("revoke-share-link");
+        const form = document.getElementById("revoke-share-link-form");
+        const error = document.getElementById("revoke-share-link-error");
+        const revokeTarget = document.getElementById("revoke-share-link-target");
+        const revokeDetail = document.getElementById("revoke-share-link-detail");
+        let label = "";
+        // Each active row's Revoke button opens this dialog (commandfor) and names its link.
+        dialog.addEventListener("command", ({ command, source }) => {
+          if (command !== "show-modal" || !source?.dataset.revokeUrl) return;
+          label = source.dataset.revokeLabel;
+          revokeTarget.textContent = label;
+          revokeDetail.textContent = source.dataset.revokeDetail;
+          error.hidden = true;
+          form.setAttribute("hx-post", source.dataset.revokeUrl);
+          htmx.process(form);
+        });
+        // Name the actual failure; only a failed request means the network. The dialog stays
+        // open on every failure, so the user can retry.
+        const showError = (text) => {
+          error.textContent = text;
+          error.hidden = false;
+        };
+        // A dropped connection or a server error can follow a revoke that was saved, so
+        // these two can't say the link is still active. Retrying is safe: a second revoke
+        // keeps the first revocation time.
+        form.addEventListener("htmx:sendError", () => showError(
+          "Couldn’t confirm the link was revoked. Check your connection, then reload the page or try again."
+        ));
+        form.addEventListener("htmx:responseError", ({ detail: { xhr } }) => showError({
+          401: "You’ve been signed out, so the link is still active. Sign in again, then revoke it.",
+          403: "Your session has changed. Reload the page, then revoke the link again.",
+          404: "This share link no longer exists. Reload the page to update the list.",
+        }[xhr.status] ?? "Firebreak couldn’t confirm the link was revoked. Reload the page to check, or try again."));
+        // Escape can't close the dialog mid-request, or a failure would land in a closed dialog.
+        dialog.addEventListener("cancel", (event) => {
+          if (form.classList.contains("htmx-request")) event.preventDefault();
+        });
+
+        const toast = document.getElementById("share-links-toast");
+        const toastMessage = document.getElementById("share-links-toast-message");
+        const toastTarget = document.getElementById("share-links-toast-target");
+        let hideToast;
+        const focusSelectedTab = () =>
+          document.querySelector('#share-link-tabs [role="tab"][aria-selected="true"]')?.focus();
+        const closeToast = () => {
+          clearTimeout(hideToast);
+          // Hiding the toast would drop focus to the page, so it goes back to the tabs.
+          if (toast.contains(document.activeElement)) focusSelectedTab();
+          delete toast.dataset.open;
+        };
+        // Stays while hovered or focused, then closes after 6 seconds.
+        const scheduleClose = () => {
+          clearTimeout(hideToast);
+          hideToast = setTimeout(closeToast, 6000);
+        };
+        const showToast = (message, target, done) => {
+          toast.toggleAttribute("data-done", done);
+          toast.dataset.open = "";
+          // Cleared first, so the same message is announced again for the next link. The
+          // text waits a second frame: the toast is visibility-hidden until it opens, and a
+          // live region must be in the accessibility tree before its text changes.
+          toastMessage.textContent = "";
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            toastMessage.textContent = message;
+            toastTarget.textContent = target;
+          }));
+          scheduleClose();
+        };
+        toast.addEventListener("mouseenter", () => clearTimeout(hideToast));
+        toast.addEventListener("focusin", () => clearTimeout(hideToast));
+        toast.addEventListener("mouseleave", scheduleClose);
+        toast.addEventListener("focusout", scheduleClose);
+        document.getElementById("share-links-toast-close").addEventListener("click", closeToast);
+
+        document.body.addEventListener("share-link-revoked", ({ detail: { id, message, revoked } }) => {
+          dialog.close();
+          // The one-time URL card for this link would only show a URL that no longer opens.
+          const card = document.getElementById("created-share");
+          if (card?.dataset.linkId === id) card.remove();
+          showToast(message, label, revoked);
+          // The link has moved to the Revoked tab. Focus the selected tab, which announces
+          // its new count.
+          focusSelectedTab();
+        });
+      }
+      {
+        // Share link status tabs (share_links.html). The tabs are re-rendered after a revoke
+        // or a new link, so listen on the document.
+        // Also runs on incoming markup before it is swapped in, so panels are looked up
+        // inside the tab's own container rather than the document.
+        const selectTab = (tab, focus = true) => {
+          const container = tab.closest("#share-link-tabs");
+          for (const other of container.querySelectorAll('[role="tab"]')) {
+            const selected = other === tab;
+            other.setAttribute("aria-selected", String(selected));
+            other.tabIndex = selected ? 0 : -1;
+            container.querySelector(`#${other.getAttribute("aria-controls")}`).hidden = !selected;
+          }
+          if (focus) tab.focus();
+        };
+        document.addEventListener("click", ({ target }) => {
+          const tab = target.closest('#share-link-tabs [role="tab"]');
+          if (tab) selectTab(tab);
+        });
+        // Arrow keys move between tabs and select them; Home and End jump to the ends.
+        document.addEventListener("keydown", (event) => {
+          const tab = event.target.closest?.('#share-link-tabs [role="tab"]');
+          if (!tab) return;
+          const tabs = [...tab.parentElement.querySelectorAll('[role="tab"]')];
+          const index = tabs.indexOf(tab);
+          const next = {
+            ArrowRight: tabs[(index + 1) % tabs.length],
+            ArrowLeft: tabs[(index - 1 + tabs.length) % tabs.length],
+            Home: tabs[0],
+            End: tabs.at(-1),
+          }[event.key];
+          if (!next) return;
+          event.preventDefault();
+          selectTab(next);
+        });
+        // A revoke re-renders only the tabs: keep the one the user was on. Creating a link
+        // re-renders the whole section and shows Active, where the new link is.
+        // htmx passes the incoming element wrapped in a DocumentFragment.
+        document.body.addEventListener("htmx:oobBeforeSwap", ({ detail: { target, fragment } }) => {
+          if (target?.id !== "share-link-tabs") return;
+          const current = target.querySelector('[role="tab"][aria-selected="true"]');
+          const tab = current && fragment.querySelector(`#share-link-tabs #${current.id}`);
+          if (tab) selectTab(tab, false);
+        });
+      }
+    </script>
     {% if not pat_registered %}
       <div class="rounded-lg border border-warning-muted bg-warning-muted/40 px-5 py-4">
         <p class="text-sm font-semibold text-warning-foreground">Access token required</p>

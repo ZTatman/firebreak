@@ -46,10 +46,6 @@
     --color-danger-hover: #9a1824;
     --color-danger-muted: #f1e2e2;
 
-    --color-expired: #5c5c58;
-    --color-expired-foreground: #4b4b47;
-    --color-expired-muted: #eeeeea;
-
     --radius-sm: 0.125rem;
     --radius-md: 0.25rem;
     --radius-lg: 0.375rem;
@@ -95,10 +91,6 @@
     --color-danger-foreground: #f5806f;
     --color-danger-hover: #c23625;
     --color-danger-muted: #3d2427;
-
-    --color-expired: #bdb8ad;
-    --color-expired-foreground: #d6d0c4;
-    --color-expired-muted: #282b30;
 
     --image-wrapper-size: 100%;
 }
@@ -160,6 +152,15 @@
 
     .btn-borderless {
         @apply bg-brand text-brand-foreground hover:bg-brand-hover;
+    }
+
+    /* Danger is for revoking, not primary actions. Muted surface keeps AA contrast. */
+    .btn-danger {
+        @apply border border-danger/50 bg-danger-muted text-danger-foreground hover:border-danger;
+    }
+
+    .btn-danger-quiet {
+        @apply text-danger-foreground hover:bg-danger-muted;
     }
 
     .app-header {
@@ -245,14 +246,6 @@
         @apply rounded-full bg-warning-muted px-2.5 py-1 text-xs font-medium text-warning-foreground;
     }
 
-    .badge-danger {
-        @apply rounded-full bg-danger-muted px-2.5 py-1 text-xs font-medium text-danger-foreground;
-    }
-
-    .badge-expired {
-        @apply rounded-full bg-expired-muted px-2.5 py-1 text-xs font-medium text-expired-foreground;
-    }
-
     /* Tinted panels for a status message; layout stays in the markup. */
     .callout-success {
         @apply rounded-lg border border-success/45 bg-success-muted/30;
@@ -331,6 +324,59 @@
         background: var(--color-card);
         color: var(--color-card-foreground);
         box-shadow: 0 24px 64px rgb(0 0 0 / 55%);
+    }
+
+    /* Share link status tabs. The selected tab takes the foreground underline;
+       brand red stays for actions. 44px tall for touch. */
+    .share-links-tab {
+        @apply -mb-px inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-1 border-b-2 border-transparent px-3 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring;
+
+        &[aria-selected="true"] {
+            @apply border-foreground text-foreground;
+        }
+    }
+
+    /* Revoke result on the dashboard. Always in the page as the live region; data-open
+       shows it, data-done picks the check (revoked) or info icon (nothing changed).
+       Bottom centre on phones, bottom right from sm. */
+    .toast {
+        @apply fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-sm items-start gap-3 rounded-lg border border-border bg-card py-3 pr-3 pl-4 text-sm text-card-foreground sm:right-6 sm:bottom-6 sm:left-auto sm:mx-0 sm:w-sm;
+        box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+        opacity: 0;
+        transform: translateY(0.75rem);
+        visibility: hidden;
+        transition:
+            opacity 160ms ease-out,
+            transform 160ms ease-out,
+            visibility 0s linear 160ms;
+
+        &[data-open] {
+            opacity: 1;
+            transform: none;
+            visibility: visible;
+            transition:
+                opacity 280ms cubic-bezier(0.16, 1, 0.3, 1),
+                transform 280ms cubic-bezier(0.16, 1, 0.3, 1),
+                visibility 0s;
+        }
+
+        &:not([data-done]) .toast-icon-done,
+        &[data-done] .toast-icon-info {
+            display: none;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            transform: none;
+        }
+    }
+
+    /* A short confirmation in the picker's dialog frame. */
+    .confirm-dialog {
+        inline-size: min(28rem, calc(100dvw - 2rem));
+        block-size: fit-content;
+        /* Scrolls on short viewports and at high zoom, so the actions stay reachable. */
+        max-block-size: calc(100dvh - 2rem);
+        overflow-y: auto;
     }
 
     .picker-dialog::backdrop {
