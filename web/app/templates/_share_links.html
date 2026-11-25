@@ -4,8 +4,8 @@
 {% macro timestamp(moment, with_time=false) -%}
   <time datetime="{{ moment.isoformat() }}">{{ moment | utc_datetime if with_time else moment | utc_date }}</time>
 {%- endmacro %}
-{% macro lifetime(link) -%}
-  {{ {"revoked": "Revoked", "expired": "Expired"}.get(link.status, "Expires") }} {{ link.ends_at | relative_time }}
+{% macro lifetime(link, status) -%}
+  {{ {"revoked": "Revoked", "expired": "Expired"}.get(status, "Expires") }} {{ link.ends_at | relative_time }}
 {%- endmacro %}
 {# Opens the revoke dialog in dashboard.html, which reads the data attributes. The
    created date tells apart two links to the same commit. #}
@@ -16,41 +16,38 @@
           command="show-modal"
           data-revoke-url="{{ url_for('revoke_link', link_id=link.id).path }}"
           data-revoke-label="{{ link.repo_owner }}/{{ link.repo_name }} at {{ link.commit_sha[:12] }}"
-          data-revoke-detail="Created {{ link.created_at | utc_date }} · {{ lifetime(link) }}"
+          data-revoke-detail="Created {{ link.created_at | utc_date }} · {{ lifetime(link, "active") }}"
           aria-label="Revoke share link for {{ link.repo_owner }}/{{ link.repo_name }} at {{ link.commit_sha[:12] }}, created {{ link.created_at | utc_date }}">
     Revoke
   </button>
 {%- endmacro %}
-{# Each tab holds one status, so rows carry no status badge. Only active links can be revoked. #}
-{% macro table_row(link, highlight=false) -%}
-  <tr id="share-link-{{ link.id }}"
-      class="focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring {% if highlight %}bg-success-muted/25{% endif %}"
-      tabindex="-1">
+{# Each tab holds one status, passed in as status, so rows carry no status badge.
+   Only active links can be revoked. #}
+{% macro table_row(link, status, highlight=false) -%}
+  <tr{% if highlight %} class="bg-success-muted/25"{% endif %}>
     <th scope="row" class="px-4 py-3 font-medium">{{ link.repo_owner }}/{{ link.repo_name }}</th>
     <td class="px-4 py-3 font-mono text-xs" title="{{ link.commit_sha }}">{{ link.commit_sha[:12] }}</td>
     <td class="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">{{ timestamp(link.created_at) }}</td>
     <td class="whitespace-nowrap px-4 py-3">
-      <span class="block text-sm">{{ lifetime(link) }}</span>
+      <span class="block text-sm">{{ lifetime(link, status) }}</span>
       <span class="block text-xs text-muted-foreground">{{ timestamp(link.ends_at, with_time=true) }}</span>
     </td>
-    {% if link.status == "active" %}
+    {% if status == "active" %}
       <td class="px-4 py-3 text-right">{{ revoke_button(link, "-my-1") }}</td>
     {% endif %}
   </tr>
 {%- endmacro %}
-{% macro list_item(link, highlight=false) -%}
-  <li id="share-link-{{ link.id }}-item"
-      class="space-y-1.5 px-4 py-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring {% if highlight %}bg-success-muted/25{% endif %}"
-      tabindex="-1">
+{% macro list_item(link, status, highlight=false) -%}
+  <li class="space-y-1.5 px-4 py-3 {% if highlight %}bg-success-muted/25{% endif %}">
     <p class="min-w-0 break-words font-medium">{{ link.repo_owner }}/{{ link.repo_name }}</p>
-    <p class="text-sm">{{ lifetime(link) }}</p>
+    <p class="text-sm">{{ lifetime(link, status) }}</p>
     <div class="flex items-end justify-between gap-3">
       <p class="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
         <span class="font-mono" title="{{ link.commit_sha }}">{{ link.commit_sha[:12] }}</span>
         <span>Created {{ timestamp(link.created_at) }}</span>
       </p>
       {# A 44px touch target; the negative margin keeps active items as compact as the others. #}
-      {% if link.status == "active" %}{{ revoke_button(link, "-my-2.5 min-h-11 px-3") }}{% endif %}
+      {% if status == "active" %}{{ revoke_button(link, "-my-2.5 min-h-11 px-3") }}{% endif %}
     </div>
   </li>
 {%- endmacro %}
@@ -74,12 +71,12 @@
         </tr>
       </thead>
       <tbody class="divide-y divide-border">
-        {% for link in links %}{{ table_row(link, highlight=link.id == highlight_id) }}{% endfor %}
+        {% for link in links %}{{ table_row(link, status, highlight=link.id == highlight_id) }}{% endfor %}
       </tbody>
     </table>
   </div>
   <ul class="card divide-y divide-border sm:hidden" aria-labelledby="{{ labelledby }}">
-    {% for link in links %}{{ list_item(link, highlight=link.id == highlight_id) }}{% endfor %}
+    {% for link in links %}{{ list_item(link, status, highlight=link.id == highlight_id) }}{% endfor %}
   </ul>
 {%- endmacro %}
 {# One tab per status, each with its count. Active is selected on render; dashboard.html
@@ -90,10 +87,12 @@
        class="space-y-3"
        {% if out_of_band %}hx-swap-oob="outerHTML"{% endif %}>
     {% if share_links %}
+      {#- Grouped against one clock, so a link expiring mid-render lands in one tab. -#}
+      {%- set by_status = share_links | by_status -%}
       {%- set groups = [
-        ("active", "Active", share_links | selectattr("status", "eq", "active") | list),
-        ("revoked", "Revoked", share_links | selectattr("status", "eq", "revoked") | sort(attribute="ends_at", reverse=true)),
-        ("expired", "Expired", share_links | selectattr("status", "eq", "expired") | sort(attribute="ends_at", reverse=true)),
+        ("active", "Active", by_status.active),
+        ("revoked", "Revoked", by_status.revoked),
+        ("expired", "Expired", by_status.expired),
       ] -%}
       <div class="flex overflow-x-auto border-b border-border"
            role="tablist"

@@ -189,7 +189,7 @@
       </div>
       <button id="share-links-toast-close"
               type="button"
-              class="-m-2 grid size-11 shrink-0 cursor-pointer place-items-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+              class="picker-close -m-2 size-11"
               aria-label="Dismiss">
         {% call icon() %}
           <path d="M18 6 6 18" />
@@ -237,13 +237,15 @@
         const dialog = document.getElementById("revoke-share-link");
         const form = document.getElementById("revoke-share-link-form");
         const error = document.getElementById("revoke-share-link-error");
+        const revokeTarget = document.getElementById("revoke-share-link-target");
+        const revokeDetail = document.getElementById("revoke-share-link-detail");
         let label = "";
         // Each active row's Revoke button opens this dialog (commandfor) and names its link.
         dialog.addEventListener("command", ({ command, source }) => {
           if (command !== "show-modal" || !source?.dataset.revokeUrl) return;
           label = source.dataset.revokeLabel;
-          document.getElementById("revoke-share-link-target").textContent = label;
-          document.getElementById("revoke-share-link-detail").textContent = source.dataset.revokeDetail;
+          revokeTarget.textContent = label;
+          revokeDetail.textContent = source.dataset.revokeDetail;
           error.hidden = true;
           form.setAttribute("hx-post", source.dataset.revokeUrl);
           htmx.process(form);
@@ -271,9 +273,15 @@
         });
 
         const toast = document.getElementById("share-links-toast");
+        const toastMessage = document.getElementById("share-links-toast-message");
+        const toastTarget = document.getElementById("share-links-toast-target");
         let hideToast;
+        const focusSelectedTab = () =>
+          document.querySelector('#share-link-tabs [role="tab"][aria-selected="true"]')?.focus();
         const closeToast = () => {
           clearTimeout(hideToast);
+          // Hiding the toast would drop focus to the page, so it goes back to the tabs.
+          if (toast.contains(document.activeElement)) focusSelectedTab();
           delete toast.dataset.open;
         };
         // Stays while hovered or focused, then closes after 6 seconds.
@@ -287,10 +295,10 @@
           // Cleared first, so the same message is announced again for the next link. The
           // text waits a second frame: the toast is visibility-hidden until it opens, and a
           // live region must be in the accessibility tree before its text changes.
-          document.getElementById("share-links-toast-message").textContent = "";
+          toastMessage.textContent = "";
           requestAnimationFrame(() => requestAnimationFrame(() => {
-            document.getElementById("share-links-toast-message").textContent = message;
-            document.getElementById("share-links-toast-target").textContent = target;
+            toastMessage.textContent = message;
+            toastTarget.textContent = target;
           }));
           scheduleClose();
         };
@@ -308,7 +316,7 @@
           showToast(message, label, revoked);
           // The link has moved to the Revoked tab. Focus the selected tab, which announces
           // its new count.
-          document.querySelector('#share-link-tabs [role="tab"][aria-selected="true"]')?.focus();
+          focusSelectedTab();
         });
       }
       {

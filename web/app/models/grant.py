@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, get_args
 
@@ -13,6 +14,7 @@ if TYPE_CHECKING:
     from .user import User
 
 GrantType = Literal["public", "private"]
+GrantStatus = Literal["active", "expired", "revoked"]
 
 # Public links must expire. These are the lifetimes the dashboard offers, and the
 # longest one is the cap for every way of creating a link.
@@ -50,10 +52,13 @@ class Grant(Base):
     user: Mapped[User] = relationship("User", back_populates="grants")
 
     @property
-    def status(self) -> Literal["active", "expired", "revoked"]:
+    def status(self) -> GrantStatus:
+        return self.status_at(datetime.now(UTC))
+
+    def status_at(self, now: datetime) -> GrantStatus:
         if self.revoked_at is not None:
             return "revoked"
-        if self.expires_at <= datetime.now(UTC):
+        if self.expires_at <= now:
             return "expired"
         return "active"
 
@@ -61,3 +66,21 @@ class Grant(Base):
     def ends_at(self) -> datetime:
         """When access ends: the revocation time, else the scheduled expiry."""
         return self.revoked_at or self.expires_at
+
+
+def group_by_status(grants: Iterable[Grant]) -> dict[GrantStatus, list[Grant]]:
+    """Group grants by status against one clock, so each lands in exactly one group.
+
+    Active keeps the given order; revoked and expired are most recently ended first.
+    """
+    now = datetime.now(UTC)
+    groups: dict[GrantStatus, list[Grant]] = {
+        "active": [],
+        "revoked": [],
+        "expired": [],
+    }
+    for grant in grants:
+        groups[grant.status_at(now)].append(grant)
+    groups["revoked"].sort(key=lambda grant: grant.ends_at, reverse=True)
+    groups["expired"].sort(key=lambda grant: grant.ends_at, reverse=True)
+    return groups

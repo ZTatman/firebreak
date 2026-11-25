@@ -11,7 +11,7 @@ import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
-from sqlalchemy import Select, func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
@@ -79,12 +79,13 @@ async def create_link_from_preview(
     csrf_token: Annotated[str, Form(max_length=64)],
 ) -> Response:
     # The picker only works through HTMX, so this route only serves its fragments.
-    if request.headers.get("HX-Request") != "true":
-        raise HTTPException(status_code=400, detail="Create links from the dashboard.")
-    if not hmac.compare_digest(
-        csrf_token.encode(), share_link_csrf_token(session).encode()
-    ):
-        raise HTTPException(status_code=403, detail="Reopen the picker and try again.")
+    _check_dashboard_form(
+        request,
+        session,
+        csrf_token,
+        wrong_place="Create links from the dashboard.",
+        bad_token="Reopen the picker and try again.",
+    )
     if expires_in not in LINK_LIFETIME_DAYS:
         raise HTTPException(status_code=422, detail="Choose a listed expiration.")
 
@@ -142,49 +143,52 @@ async def revoke_link(
     db: Annotated[AsyncSession, Depends(get_db)],
     csrf_token: Annotated[str, Form(max_length=64)],
 ) -> Response:
-    # The dashboard's confirmation dialog only works through HTMX.
-    if request.headers.get("HX-Request") != "true":
-        raise HTTPException(status_code=400, detail="Revoke links from the dashboard.")
-    # The dashboard carries the same session-bound token as the create form.
-    if not hmac.compare_digest(
-        csrf_token.encode(), share_link_csrf_token(session).encode()
-    ):
-        raise HTTPException(status_code=403, detail="Reload the page and try again.")
+    # The dashboard's confirmation dialog only works through HTMX, and carries the
+    # same session-bound token as the create form.
+    _check_dashboard_form(
+        request,
+        session,
+        csrf_token,
+        wrong_place="Revoke links from the dashboard.",
+        bad_token="Reload the page and try again.",
+    )
 
     # One statement, so a link that expires or is revoked in the meantime is left
     # alone: an earlier revocation time is kept, and expired links keep ending at
-    # their expiry.
+    # their expiry. The app's clock, not the database's, so the update, the message
+    # and the tabs (Grant.status) all agree on whether the link had expired.
+    now = datetime.now(UTC)
     revoked_id = await db.scalar(
         update(Grant)
         .where(
             Grant.id == link_id,
             Grant.user_id == session.user_id,
             Grant.revoked_at.is_(None),
-            Grant.expires_at > func.now(),
+            Grant.expires_at > now,
         )
-        .values(revoked_at=func.now())
+        .values(revoked_at=now)
         .returning(Grant.id)
     )
     await db.commit()
 
-    link = await db.scalar(
-        _share_links_query(session.user_id).where(Grant.id == link_id)
-    )
+    # The response re-renders the whole list anyway, so the link is found in it.
+    share_links = await list_share_links(db, session.user_id)
+    link = next((link for link in share_links if link.id == link_id), None)
     if link is None:
         # Also for another user's link, so its existence isn't revealed.
         raise HTTPException(status_code=404, detail="Share link not found.")
 
     if revoked_id is not None:
         message = "Share link revoked."
-    elif link.status == "revoked":
+    elif link.status_at(now) == "revoked":
         message = "This share link was already revoked."
     else:
         message = "This share link has already expired."
     return templates.TemplateResponse(
         request,
         "share_link_revoked.html",
-        # The whole list, since the link moves from Active to Ended.
-        {"share_links": await list_share_links(db, session.user_id)},
+        # The whole list, since the link moves from Active to Revoked.
+        {"share_links": share_links},
         headers={
             **_NO_STORE,
             "HX-Trigger-After-Settle": json.dumps(
@@ -201,8 +205,25 @@ async def revoke_link(
     )
 
 
-def _share_links_query(user_id: UUID) -> Select[tuple[Grant]]:
-    return (
+def _check_dashboard_form(
+    request: Request,
+    session: UserBrowserSession,
+    csrf_token: str,
+    *,
+    wrong_place: str,
+    bad_token: str,
+) -> None:
+    """Reject a dashboard form post that isn't from HTMX or lacks the session's token."""
+    if request.headers.get("HX-Request") != "true":
+        raise HTTPException(status_code=400, detail=wrong_place)
+    if not hmac.compare_digest(
+        csrf_token.encode(), share_link_csrf_token(session).encode()
+    ):
+        raise HTTPException(status_code=403, detail=bad_token)
+
+
+async def list_share_links(db: AsyncSession, user_id: UUID) -> Sequence[Grant]:
+    stmt = (
         select(Grant)
         .options(
             load_only(
@@ -215,12 +236,7 @@ def _share_links_query(user_id: UUID) -> Select[tuple[Grant]]:
             )
         )
         .where(Grant.user_id == user_id)
-    )
-
-
-async def list_share_links(db: AsyncSession, user_id: UUID) -> Sequence[Grant]:
-    stmt = _share_links_query(user_id).order_by(
-        Grant.created_at.desc(), Grant.id.desc()
+        .order_by(Grant.created_at.desc(), Grant.id.desc())
     )
     return (await db.scalars(stmt)).all()
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from jinja2_fragments.fastapi import Jinja2Blocks
 
-from app.models.grant import LINK_LIFETIME_DAYS
+from app.models.grant import LINK_LIFETIME_DAYS, group_by_status
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -55,7 +55,10 @@ def expiry_label(days: int) -> str:
 
 
 templates.env.filters.update(
-    relative_time=relative_time, utc_datetime=utc_datetime, utc_date=utc_date
+    by_status=group_by_status,
+    relative_time=relative_time,
+    utc_datetime=utc_datetime,
+    utc_date=utc_date,
 )
 templates.env.globals.update(
     expiry_label=expiry_label, lifetime_days=LINK_LIFETIME_DAYS
