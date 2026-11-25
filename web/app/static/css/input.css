@@ -374,6 +374,9 @@
     .confirm-dialog {
         inline-size: min(28rem, calc(100dvw - 2rem));
         block-size: fit-content;
+        /* Scrolls on short viewports and at high zoom, so the actions stay reachable. */
+        max-block-size: calc(100dvh - 2rem);
+        overflow-y: auto;
     }
 
     .picker-dialog::backdrop {

@@ -258,9 +258,14 @@
           "Couldn’t reach Firebreak, so the link is still active. Check your connection, then try again."
         ));
         form.addEventListener("htmx:responseError", ({ detail: { xhr } }) => showError({
+          401: "You’ve been signed out, so the link is still active. Sign in again, then revoke it.",
           403: "Your session has changed. Reload the page, then revoke the link again.",
           404: "This share link no longer exists. Reload the page to update the list.",
         }[xhr.status] ?? "Firebreak couldn’t revoke the link, so it’s still active. Try again."));
+        // Escape can't close the dialog mid-request, or a failure would land in a closed dialog.
+        dialog.addEventListener("cancel", (event) => {
+          if (form.classList.contains("htmx-request")) event.preventDefault();
+        });
 
         const toast = document.getElementById("share-links-toast");
         let hideToast;
@@ -276,12 +281,14 @@
         const showToast = (message, target, done) => {
           toast.toggleAttribute("data-done", done);
           toast.dataset.open = "";
-          // Cleared first, so the same message is announced again for the next link.
+          // Cleared first, so the same message is announced again for the next link. The
+          // text waits a second frame: the toast is visibility-hidden until it opens, and a
+          // live region must be in the accessibility tree before its text changes.
           document.getElementById("share-links-toast-message").textContent = "";
-          requestAnimationFrame(() => {
+          requestAnimationFrame(() => requestAnimationFrame(() => {
             document.getElementById("share-links-toast-message").textContent = message;
             document.getElementById("share-links-toast-target").textContent = target;
-          });
+          }));
           scheduleClose();
         };
         toast.addEventListener("mouseenter", () => clearTimeout(hideToast));
