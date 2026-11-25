@@ -4,19 +4,23 @@ node_modules/
 .tmp/
 dist/
 coverage/
+*.log
 .env
 .env.*
 !.env.example
 *.tsbuildinfo
 
 # Python
-web/.venv/
-web/__pycache__/
-web/*.py[cod]
-**/__pycache__/
-**/*.pyc
+.venv/
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
 
-# Tailwind standalone CLI
+# Tailwind: generated CSS, and the standalone CLI must not come back (see agents.md)
 web/tailwindcss
 web/app/static/css/output.css
 
@@ -28,3 +32,13 @@ web/app/static/css/output.css
 /.opencode/skills/
 /.claude/skills/
 /skills-lock.json
+
+# Claude Code: settings.json and launch.json are shared, these are per machine
+.claude/settings.local.json
+.claude/worktrees/
+
+# Impeccable: commit config.json, keep the rest local (see agents.md)
+**/.impeccable/config.local.json
+**/.impeccable/hook.cache.json
+**/.impeccable/hook.pending.json
+**/.impeccable/critique/
