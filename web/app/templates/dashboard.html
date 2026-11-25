@@ -248,20 +248,23 @@
           form.setAttribute("hx-post", source.dataset.revokeUrl);
           htmx.process(form);
         });
-        // Name the actual failure; only a failed request means the network. Every failure
-        // leaves the link active, so the dialog stays open on it.
+        // Name the actual failure; only a failed request means the network. The dialog stays
+        // open on every failure, so the user can retry.
         const showError = (text) => {
           error.textContent = text;
           error.hidden = false;
         };
+        // A dropped connection or a server error can follow a revoke that was saved, so
+        // these two can't say the link is still active. Retrying is safe: a second revoke
+        // keeps the first revocation time.
         form.addEventListener("htmx:sendError", () => showError(
-          "Couldn’t reach Firebreak, so the link is still active. Check your connection, then try again."
+          "Couldn’t confirm the link was revoked. Check your connection, then reload the page or try again."
         ));
         form.addEventListener("htmx:responseError", ({ detail: { xhr } }) => showError({
           401: "You’ve been signed out, so the link is still active. Sign in again, then revoke it.",
           403: "Your session has changed. Reload the page, then revoke the link again.",
           404: "This share link no longer exists. Reload the page to update the list.",
-        }[xhr.status] ?? "Firebreak couldn’t revoke the link, so it’s still active. Try again."));
+        }[xhr.status] ?? "Firebreak couldn’t confirm the link was revoked. Reload the page to check, or try again."));
         // Escape can't close the dialog mid-request, or a failure would land in a closed dialog.
         dialog.addEventListener("cancel", (event) => {
           if (form.classList.contains("htmx-request")) event.preventDefault();
