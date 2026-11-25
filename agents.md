@@ -102,7 +102,7 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Area:** web/app/templates/base.html, web/app/templates/index.html, web/app/static/css/input.css
 **Obstacle:** The inline Firebreak header wordmark uses hardcoded SVG fills, and page-level header rules can accidentally apply icon `stroke` styles to the brand SVG. On forced-dark landing headers, the `#17191C` wordmark fill disappears against the obsidian nav.
 **Solution/Workaround:** Give the header brand link a stable `brand-link` class, prevent inherited SVG strokes on `.brand-link svg`, and override only the hardcoded wordmark fill in dark contexts or forced-dark page headers.
-**Preference:** Scope icon stroke rules to nav icons; do not apply broad `header svg` stroke styles.
+**Preference:** Scope icon stroke rules to nav icons; do not apply broad `header svg` stroke styles. Below `sm` the wordmark is hidden and only the mark shows, so the signed-in nav fits at 320px without horizontal scroll.
 
 ### Landing video poster caused logo flash
 **Area:** web/app/templates/index.html, web/app/static/img/
@@ -323,7 +323,7 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 ### Revoking must not replace the Share links section
 **Area:** web/app/routers/links.py, web/app/templates/_share_links.html, web/app/templates/share_link_revoked.html, web/app/templates/dashboard.html
 **Obstacle:** Swapping all of `#share-links` after a revoke would remove an unsaved one-time URL card. A revoke could also race an expiry or a second click, and a revoked expired link would report a later end than its real expiry.
-**Solution/Workaround:** `POST /links/{id}/revoke` (HTMX only, create-form CSRF token) sets `revoked_at` with a single conditional `UPDATE`: owned, not revoked, not expired. Otherwise the list is returned unchanged, or 404 for a missing or unowned link. The list is split into Active, Revoked and Expired ARIA tabs with counts, so a revoke moves the link between tabs: the response re-renders only `#share-link-tabs` out of band, below the card. An `htmx:oobBeforeSwap` listener keeps the selected tab (htmx 2 passes a `DocumentFragment` wrapping the element, so match on `detail.target` and query the fragment), and focus returns to that tab so its new count is announced. Creating a link re-renders the whole section and selects Active. One native dialog sits outside `#share-links` and the access-token check, and carries the CSRF token once. Revoking the link in the one-time card removes the card without asking.
+**Solution/Workaround:** `POST /links/{id}/revoke` (HTMX only, create-form CSRF token) sets `revoked_at` with a single conditional `UPDATE`: owned, not revoked, not expired. Otherwise the list is returned unchanged, or 404 for a missing or unowned link. The list is split into Active, Revoked and Expired ARIA tabs with counts, so a revoke moves the link between tabs: the response re-renders only `#share-link-tabs` out of band, below the card. An `htmx:oobBeforeSwap` listener keeps the selected tab (htmx 2 passes a `DocumentFragment` wrapping the element, so match on `detail.target` and query the fragment), and focus returns to that tab so its new count is announced. Creating a link re-renders the whole section and selects Active. The result shows in `#share-links-toast`, which stays in the page as the live region; the trigger's `revoked` flag picks a check (revoked now) or info icon (already revoked or expired). Failures keep the dialog open and name the cause by status (network, 403 session, 404 missing, other), each saying the link is still active. One native dialog sits outside `#share-links` and the access-token check, and carries the CSRF token once. Revoking the link in the one-time card removes the card without asking.
 **Preference:** Revoke never deletes. Share-link macros imported for `url_for` need `with context`. A modal dialog with `block-size: auto` stretches to the viewport; use `fit-content`.
 
 ### Forgejo kept the install-time sslip.io ROOT_URL
@@ -331,3 +331,15 @@ This file is the single source of truth for codebase obstacles, oddities, and th
 **Obstacle:** Forgejo was installed on Dokploy's generated `…sslip.io` domain, so `app.ini` kept that `ROOT_URL` after `git.firebreak.build` was added. Forgejo showed a ROOT_URL mismatch warning and OAuth2 sign-in from Firebreak was unreliable.
 **Solution/Workaround:** Set `FORGEJO__server__ROOT_URL=https://git.firebreak.build/` (plus `DOMAIN` and `SSH_DOMAIN`) in the Forgejo service's Dokploy environment and redeploy.
 **Preference:** Keep the setting in Dokploy's environment rather than editing `app.ini` in the volume, so a redeploy can't revert it.
+
+### Impeccable keeps a config per monorepo project
+**Area:** .impeccable/, web/.impeccable/
+**Obstacle:** Firebreak is a pnpm monorepo, so Impeccable treats `web/` as its own project for files under it. The design hook then reads only `web/.impeccable/config.json`, not the root config. Deleting `web/.impeccable/` to consolidate made the hook re-flag Geist on `base.html`.
+**Solution/Workaround:** Keep both configs and their detector ignores in step: `web/.impeccable/config.json` governs the web app's templates, and the root `.impeccable/config.json` covers runs that resolve to the repo root. Write ignores with `impeccable hooks ignore-value` from the matching directory. Critique snapshots follow the working directory; run critiques from the repo root to keep one history in `.impeccable/critique/`.
+**Preference:** Commit both `config.json` files; leave `config.local.json`, `hook.cache.json` and `critique/` untracked.
+
+### Worktrees from before the rename could not be removed
+**Area:** git worktrees (`~/.codex/worktrees/*/embargo`)
+**Obstacle:** Worktrees created while the repo was at `Projects/embargo` kept `.git` files pointing there. `git worktree remove` failed with "is not a .git file", and `git worktree list` kept listing them.
+**Solution/Workaround:** Run `git worktree repair <path>` for each worktree (one path per call; zsh does not word-split an unquoted variable), confirm `git -C <path> status` is clean, then `git worktree remove <path>` and `git worktree prune`.
+**Preference:** Repair, then remove, rather than deleting directories by hand, so git's metadata stays in step.

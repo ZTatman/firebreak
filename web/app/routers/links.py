@@ -188,7 +188,14 @@ async def revoke_link(
         headers={
             **_NO_STORE,
             "HX-Trigger-After-Settle": json.dumps(
-                {"share-link-revoked": {"id": str(link.id), "message": message}}
+                {
+                    "share-link-revoked": {
+                        "id": str(link.id),
+                        "message": message,
+                        # False when it was already revoked or expired: nothing changed.
+                        "revoked": revoked_id is not None,
+                    }
+                }
             ),
         },
     )

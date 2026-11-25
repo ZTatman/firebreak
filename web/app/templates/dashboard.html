@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Dashboard — Firebreak{% endblock %}
 {% block content %}
   <div class="flex flex-col gap-6">
@@ -169,7 +170,33 @@
     {% include "share_links.html" %}
     {# Outside #share-links, which is replaced after creating a link, and outside the
        access-token check: revoking only needs the Firebreak session. #}
-    <p id="share-links-status" class="sr-only" role="status"></p>
+    {# Revoke result for everyone: the toast is the live region, so it stays in the page
+       and only its text and data-open change. #}
+    <div id="share-links-toast" class="toast" role="status">
+      {% call icon("toast-icon-done mt-0.5 shrink-0 text-success", 18) %}
+        <circle cx="12" cy="12" r="10" />
+        <path d="m9 12 2 2 4-4" />
+      {% endcall %}
+      {% call icon("toast-icon-info mt-0.5 shrink-0 text-muted-foreground", 18) %}
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 16v-4" />
+        <path d="M12 8h.01" />
+      {% endcall %}
+      <div class="min-w-0 flex-1 space-y-0.5">
+        <p id="share-links-toast-message" class="font-medium"></p>
+        <p id="share-links-toast-target"
+           class="font-mono text-xs break-words text-muted-foreground"></p>
+      </div>
+      <button id="share-links-toast-close"
+              type="button"
+              class="-m-2 grid size-11 shrink-0 cursor-pointer place-items-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+              aria-label="Dismiss">
+        {% call icon() %}
+          <path d="M18 6 6 18" />
+          <path d="m6 6 12 12" />
+        {% endcall %}
+      </button>
+    </div>
     <dialog id="revoke-share-link"
             class="picker-dialog confirm-dialog"
             aria-labelledby="revoke-share-link-title"
@@ -184,19 +211,24 @@
         <div class="space-y-1">
           <h2 id="revoke-share-link-title" class="picker-title">Revoke this share link?</h2>
           <p id="revoke-share-link-target" class="font-mono text-xs text-muted-foreground"></p>
+          {# Created date and time left: tells apart two links to the same commit. #}
+          <p id="revoke-share-link-detail" class="text-xs text-muted-foreground"></p>
         </div>
         <p id="revoke-share-link-description" class="text-sm text-pretty">
-          People with this link will no longer be able to open it through Firebreak. It can’t take back anything already copied.
+          People with this link will no longer be able to open it through Firebreak. This takes effect immediately and can’t be undone. It can’t take back anything already copied.
         </p>
-        <p id="revoke-share-link-error" class="input-error" role="alert" hidden>
-          Couldn’t revoke the share link. Check your connection, or reload the page and try again.
-        </p>
+        {# Text set by the script below, from the failure. #}
+        <p id="revoke-share-link-error" class="input-error" role="alert" hidden></p>
         <div class="picker-actions">
           <button type="button"
                   class="btn btn-sm btn-secondary"
                   commandfor="revoke-share-link"
                   command="close">Cancel</button>
-          <button type="submit" class="btn btn-sm btn-danger">Revoke link</button>
+          {# htmx marks the form with .htmx-request while revoking. #}
+          <button type="submit" class="btn btn-sm btn-danger">
+            <span class="in-[.htmx-request]:hidden">Revoke link</span>
+            <span class="hidden in-[.htmx-request]:inline">Revoking…</span>
+          </button>
         </div>
       </form>
     </dialog>
@@ -205,26 +237,65 @@
         const dialog = document.getElementById("revoke-share-link");
         const form = document.getElementById("revoke-share-link-form");
         const error = document.getElementById("revoke-share-link-error");
+        let label = "";
         // Each active row's Revoke button opens this dialog (commandfor) and names its link.
         dialog.addEventListener("command", ({ command, source }) => {
           if (command !== "show-modal" || !source?.dataset.revokeUrl) return;
-          document.getElementById("revoke-share-link-target").textContent = source.dataset.revokeLabel;
+          label = source.dataset.revokeLabel;
+          document.getElementById("revoke-share-link-target").textContent = label;
+          document.getElementById("revoke-share-link-detail").textContent = source.dataset.revokeDetail;
           error.hidden = true;
           form.setAttribute("hx-post", source.dataset.revokeUrl);
           htmx.process(form);
         });
-        const showError = () => { error.hidden = false; };
-        form.addEventListener("htmx:responseError", showError);
-        form.addEventListener("htmx:sendError", showError);
-        document.body.addEventListener("share-link-revoked", ({ detail: { id, message } }) => {
+        // Name the actual failure; only a failed request means the network. Every failure
+        // leaves the link active, so the dialog stays open on it.
+        const showError = (text) => {
+          error.textContent = text;
+          error.hidden = false;
+        };
+        form.addEventListener("htmx:sendError", () => showError(
+          "Couldn’t reach Firebreak, so the link is still active. Check your connection, then try again."
+        ));
+        form.addEventListener("htmx:responseError", ({ detail: { xhr } }) => showError({
+          403: "Your session has changed. Reload the page, then revoke the link again.",
+          404: "This share link no longer exists. Reload the page to update the list.",
+        }[xhr.status] ?? "Firebreak couldn’t revoke the link, so it’s still active. Try again."));
+
+        const toast = document.getElementById("share-links-toast");
+        let hideToast;
+        const closeToast = () => {
+          clearTimeout(hideToast);
+          delete toast.dataset.open;
+        };
+        // Stays while hovered or focused, then closes after 6 seconds.
+        const scheduleClose = () => {
+          clearTimeout(hideToast);
+          hideToast = setTimeout(closeToast, 6000);
+        };
+        const showToast = (message, target, done) => {
+          toast.toggleAttribute("data-done", done);
+          toast.dataset.open = "";
+          // Cleared first, so the same message is announced again for the next link.
+          document.getElementById("share-links-toast-message").textContent = "";
+          requestAnimationFrame(() => {
+            document.getElementById("share-links-toast-message").textContent = message;
+            document.getElementById("share-links-toast-target").textContent = target;
+          });
+          scheduleClose();
+        };
+        toast.addEventListener("mouseenter", () => clearTimeout(hideToast));
+        toast.addEventListener("focusin", () => clearTimeout(hideToast));
+        toast.addEventListener("mouseleave", scheduleClose);
+        toast.addEventListener("focusout", scheduleClose);
+        document.getElementById("share-links-toast-close").addEventListener("click", closeToast);
+
+        document.body.addEventListener("share-link-revoked", ({ detail: { id, message, revoked } }) => {
           dialog.close();
           // The one-time URL card for this link would only show a URL that no longer opens.
           const card = document.getElementById("created-share");
           if (card?.dataset.linkId === id) card.remove();
-          // Cleared first, so the same message is announced again for the next link.
-          const status = document.getElementById("share-links-status");
-          status.textContent = "";
-          requestAnimationFrame(() => { status.textContent = message; });
+          showToast(message, label, revoked);
           // The link has moved to the Revoked tab. Focus the selected tab, which announces
           // its new count.
           document.querySelector('#share-link-tabs [role="tab"][aria-selected="true"]')?.focus();

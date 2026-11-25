@@ -7,7 +7,8 @@
 {% macro lifetime(link) -%}
   {{ {"revoked": "Revoked", "expired": "Expired"}.get(link.status, "Expires") }} {{ link.ends_at | relative_time }}
 {%- endmacro %}
-{# Opens the revoke dialog in dashboard.html, which reads the data attributes. #}
+{# Opens the revoke dialog in dashboard.html, which reads the data attributes. The
+   created date tells apart two links to the same commit. #}
 {% macro revoke_button(link, class="") -%}
   <button type="button"
           class="btn btn-xs btn-danger-quiet {{ class }}"
@@ -15,7 +16,8 @@
           command="show-modal"
           data-revoke-url="{{ url_for('revoke_link', link_id=link.id).path }}"
           data-revoke-label="{{ link.repo_owner }}/{{ link.repo_name }} at {{ link.commit_sha[:12] }}"
-          aria-label="Revoke share link for {{ link.repo_owner }}/{{ link.repo_name }} at {{ link.commit_sha[:12] }}">
+          data-revoke-detail="Created {{ link.created_at | utc_date }} · {{ lifetime(link) }}"
+          aria-label="Revoke share link for {{ link.repo_owner }}/{{ link.repo_name }} at {{ link.commit_sha[:12] }}, created {{ link.created_at | utc_date }}">
     Revoke
   </button>
 {%- endmacro %}
@@ -47,8 +49,8 @@
         <span class="font-mono" title="{{ link.commit_sha }}">{{ link.commit_sha[:12] }}</span>
         <span>Created {{ timestamp(link.created_at) }}</span>
       </p>
-      {# Negative margin keeps active items as compact as the others. #}
-      {% if link.status == "active" %}{{ revoke_button(link, "-my-1") }}{% endif %}
+      {# A 44px touch target; the negative margin keeps active items as compact as the others. #}
+      {% if link.status == "active" %}{{ revoke_button(link, "-my-2.5 min-h-11 px-3") }}{% endif %}
     </div>
   </li>
 {%- endmacro %}

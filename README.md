@@ -94,14 +94,15 @@ Firebreak should not assume a VPS-only environment. The requirement is an existi
 - [x] Project renamed from Embargo to Firebreak
 - [x] CLI scaffold (`firebreak config init`)
 - [x] Config generation (`.env`)
-- [ ] Service foundation (FastAPI + PostgreSQL)
+- [x] Service foundation (FastAPI + PostgreSQL)
 - [x] `firebreak config verify` — verify Forgejo connectivity
 - [x] `firebreak config verify --diagnostic` — comprehensive diagnostics
 - [x] `firebreak config view` — show current config
 - [x] Forgejo OAuth authentication
-- [ ] Repo ownership verification
+- [x] Repo ownership verification
 - [ ] Private link creation (email-verified)
-- [ ] Public link creation (time-expired)
+- [x] Public link creation (time-expired)
+- [x] Share link revocation
 - [ ] Web-based code viewer
 - [x] User dashboard
 - [ ] SMTP configuration UI
